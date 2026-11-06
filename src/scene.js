@@ -136,8 +136,10 @@
       mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
               size: (m.boss ? D.bossSize : D.mobSize) * (m.def.scale || 1) };
       mob.atk = m.atk;
-      mob.talkT = m.boss ? 1.2 : 0;   // first line shortly after the boss appears
+      mob.talkT = 0;                 // first line as soon as the boss is on screen
       mob.say = null;
+      mob.deck = [];                 // shuffled remaining lines (no repeats until all used)
+      mob.saidLow = false;
       mob.siege = m.siege || null;
       mobAtkT = 0;
       bossT = m.boss ? (m.timeLimit || opts.data.combat.bossTimeLimit) : 0;
@@ -443,13 +445,14 @@
       clearAttacks(); heroHideT = 0;
       float('기절…', D.heroX + D.heroSize / 2, H - 60 - D.heroSize, '#ff5a6a', true);
       if (mob && mob.dying <= 0) {
-        if (mob.boss) { opts.onBossFail(mob); float('보스전 패배…', W / 2, 80, '#ff5a6a', true); }
+        if (mob.boss) { lastWords(mob.def.win, '#ff5a6a'); opts.onBossFail(mob); float('보스전 패배…', W / 2, 80, '#ff5a6a', true); }
         else opts.onHeroDown(mob);
         mob.dying = 0.5; mob.fled = true;
       }
     }
 
     function kill() {
+      if (mob.boss) lastWords(mob.def.lose, '#ffd84a');
       mob.hp = 0; mob.dying = 0.5; clearAttacks();
       const r = opts.onKill(mob);
       const cx = mob.x + mob.size / 2, top = H - 44 - mob.size;
@@ -496,6 +499,20 @@
         }
         break; // one skill per frame
       }
+    }
+
+    /** Shows a boss speech bubble and resets the talk timer. */
+    function say(line) {
+      mob.say = { text: line, life: D.bossTalkDuration };
+      mob.lastLine = line;
+      mob.talkT = D.bossTalkInterval;
+      if (opts.onBossTalk) opts.onBossTalk(mob, line);
+    }
+    /** Last words as a big floating line above the boss (works while it fades). */
+    function lastWords(line, color) {
+      if (!line || !mob) return;
+      floats.push({ text: '"' + line + '"', x: Math.max(110, Math.min(W - 110, mob.x + mob.size / 2)), y: H - 50 - mob.size, color, big: true, life: 2.2 });
+      if (opts.onBossTalk) opts.onBossTalk(mob, line);
     }
 
     function float(text, x, y, color, big) {
@@ -639,6 +656,7 @@
         if (mob && mob.boss && mob.dying <= 0) {
           bossT -= dt;
           if (bossT <= 0) {
+            lastWords(mob.def.win, '#ff5a6a');
             opts.onBossFail(mob);
             float('시간 초과… 보스 대기로 복귀', W / 2, 80, '#ff5a6a', true);
             mob.dying = 0.5; mob.fled = true; clearAttacks();
@@ -684,16 +702,22 @@
         if (mob.dying <= 0) { mob = null; gap = 40 + Math.random() * 60; }
       }
       if (mob) { mob.flash = Math.max(0, mob.flash - dt); mob.lunge = Math.max(0, (mob.lunge || 0) - dt); }
-      // boss trash talk every bossTalkInterval seconds while alive and on screen
-      if (mob && mob.boss && mob.dying <= 0 && mob.x < W && mob.def.lines && mob.def.lines.length) {
+      // boss talk: intro on entering the screen, a low-HP line once, otherwise a
+      // shuffled line every bossTalkInterval seconds (each line once per cycle)
+      // one clock: every bossTalkInterval seconds the boss says exactly one line —
+      // the intro first, the low-HP line once it is below half, otherwise a shuffled line
+      if (mob && mob.boss && mob.dying <= 0 && mob.x < W - mob.size * 0.5) {
         mob.talkT -= dt;
         if (mob.talkT <= 0) {
-          const ls = mob.def.lines;
-          let line = ls[Math.floor(Math.random() * ls.length)];
-          if (mob.say && ls.length > 1) while (line === mob.say.text) line = ls[Math.floor(Math.random() * ls.length)];
-          mob.say = { text: line, life: D.bossTalkDuration };
-          mob.talkT = D.bossTalkInterval;
-          if (opts.onBossTalk) opts.onBossTalk(mob, line);
+          if (!mob.introDone && mob.def.intro) { mob.introDone = true; say(mob.def.intro); }
+          else if (!mob.saidLow && mob.hp < mob.max * 0.5 && mob.def.lowHp) { mob.saidLow = true; say(mob.def.lowHp); }
+          else if (mob.def.lines && mob.def.lines.length) {
+            if (!mob.deck.length) {
+              mob.deck = mob.def.lines.slice().sort(() => Math.random() - 0.5);
+              if (mob.lastLine && mob.deck[0] === mob.lastLine && mob.deck.length > 1) mob.deck.push(mob.deck.shift());
+            }
+            say(mob.deck.shift());
+          } else mob.talkT = D.bossTalkInterval;
         }
       }
       if (mob && mob.say) { mob.say.life -= dt; if (mob.say.life <= 0 || mob.dying > 0) mob.say = null; }

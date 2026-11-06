@@ -30,24 +30,32 @@ window.GAME_DATA = {
     bossTalkInterval: 5,      // seconds between boss speech bubbles
     bossTalkDuration: 2.6,
     bosses: [
-      { name: '무임승차 슬라임 킹', sprite: 'slime.png', lines: [
+      { name: '무임승차 슬라임 킹', sprite: 'slime.png',
+        intro: '어 왔어? 나 이름만 올려줘~', lowHp: '잠깐! 나도 기여했잖아!!', win: '역시 팀플은 버스지~', lose: '다음 팀플도… 같이 하자…',
+        lines: [
         '팀플 이름에 나도 넣어줘~', '자료조사? 그건 네가 해 ㅎㅎ', '발표는 너가… 난 PPT 넘길게',
         'ㅋㅋ 미안 나 오늘 알바라서', '기여도 평가? 우리 다 똑같이 A 주자^^', '(읽음) (답장 없음)' ] },
-      { name: 'F폭격 교수', sprite: 'professor.png', lines: [
+      { name: 'F폭격 교수', sprite: 'professor.png',
+        intro: '자, 시험지 나눠드릴게요', lowHp: '이의제기는 메일로 받습니다!', win: '재수강 신청은 다음 학기에~', lose: '…A+ 줄게요. 이번만.',
+        lines: [
         'C를 가져가~', '이번 시험은 쉽게 냈어요 (안 쉬움)', '출석 부르겠습니다. 너 빼고.',
         '이건 시험에 안 나와요… 아마도?', '레포트 분량 자유! 단, 20장 이상', '질문 있는 사람? 없죠? 진도 나갑니다', 'F도 학점이야~' ] },
-      { name: '졸업 인증 드래곤', sprite: 'english.png', scale: 1.4, lines: [
+      { name: '졸업 인증 드래곤', sprite: 'english.png', scale: 1.4,
+        intro: '졸업하고 싶나? 성적표를 보여라!', lowHp: 'Wait wait! 토익 유효기간이…!', win: 'See you next semester~', lose: 'Congratulations… 졸업 인정.',
+        lines: [
         '토익 900 넘기 전엔 졸업 못 해!', 'Excuse me? 졸업 인증서는?', '영어 인증 미제출… 9학기 확정!',
         "How are you? I'm fine, and 졸업?", '스피킹 점수로 나를 이겨봐라!', 'Listen carefully… 졸업요건 바뀌었다' ] },
-      { name: '이별의 망령', sprite: 'breakup.png', lines: [
+      { name: '이별의 망령', sprite: 'breakup.png',
+        intro: '오랜만이야… 시험기간이네?', lowHp: '우리 다시… 생각해보자', win: '역시 넌 나 없으면 안 돼', lose: '행복해… 학점 잘 받아…',
+        lines: [
         '우리… 시험기간엔 연락하지 말자', '너 요즘 도서관만 가더라?', 'CC는… 헤어지면 강의실이 지옥이야',
         '잘 지내? (새벽 3시)', '프사 바꿨네…?', '공부가 나보다 좋아?' ] },
-      { name: '입영통지 헌병', sprite: 'army.png', scale: 1.4, lines: [
+      { name: '입영통지 헌병', sprite: 'army.png', scale: 1.4,
+        intro: '학번 대라! 입영 대상자 확인!', lowHp: '의무병! 의무병!!', win: '입대 날짜는 문자로 보내겠다', lose: '…병역 연기 승인!',
+        lines: [
         '학생, 입영통지서 왔습니다', '휴학계 냈나? 바로 입대다!', '충성! …아니 너 말고',
         '전역까지 D-547!', '군대 가면 철든다~', 'PT체조 10번 시작!' ] }
-    ],
-    // extra lines for 점령전 수비대장 ({dept} = owning 학과)
-    siegeLines: ['{dept}의 자존심을 지켜라!', '이 건물 콘센트는 우리 거다!', '여기 자리 맡아놨거든?', '과잠 입고 덤벼라!', '우리 과 MT 때 보자!']
+    ]
   },
 
   /**
