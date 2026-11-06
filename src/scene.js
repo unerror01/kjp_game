@@ -136,6 +136,8 @@
       mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
               size: (m.boss ? D.bossSize : D.mobSize) * (m.def.scale || 1) };
       mob.atk = m.atk;
+      mob.talkT = m.boss ? 1.2 : 0;   // first line shortly after the boss appears
+      mob.say = null;
       mob.siege = m.siege || null;
       mobAtkT = 0;
       bossT = m.boss ? (m.timeLimit || opts.data.combat.bossTimeLimit) : 0;
@@ -682,6 +684,19 @@
         if (mob.dying <= 0) { mob = null; gap = 40 + Math.random() * 60; }
       }
       if (mob) { mob.flash = Math.max(0, mob.flash - dt); mob.lunge = Math.max(0, (mob.lunge || 0) - dt); }
+      // boss trash talk every bossTalkInterval seconds while alive and on screen
+      if (mob && mob.boss && mob.dying <= 0 && mob.x < W && mob.def.lines && mob.def.lines.length) {
+        mob.talkT -= dt;
+        if (mob.talkT <= 0) {
+          const ls = mob.def.lines;
+          let line = ls[Math.floor(Math.random() * ls.length)];
+          if (mob.say && ls.length > 1) while (line === mob.say.text) line = ls[Math.floor(Math.random() * ls.length)];
+          mob.say = { text: line, life: D.bossTalkDuration };
+          mob.talkT = D.bossTalkInterval;
+          if (opts.onBossTalk) opts.onBossTalk(mob, line);
+        }
+      }
+      if (mob && mob.say) { mob.say.life -= dt; if (mob.say.life <= 0 || mob.dying > 0) mob.say = null; }
       lunge = Math.max(0, lunge - dt);
       shakeT = Math.max(0, shakeT - dt);
       flashT = Math.max(0, flashT - dt);
@@ -759,12 +774,46 @@
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by - 2, bw + 4, 18);
           ctx.fillStyle = '#5a1020'; ctx.fillRect(bx, by, bw, 14);
           ctx.fillStyle = '#ff3a50'; ctx.fillRect(bx, by, bw * Math.max(0, mob.hp) / mob.max, 14);
-          ctx.font = 'bold 10px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
-          ctx.fillText('👑 ' + mob.def.name + '  ' + fmtN(Math.max(0, mob.hp)) + ' / ' + fmtN(mob.max), bx + bw / 2, by + 11);
+          const label = '👑 ' + mob.def.name + '  ' + fmtN(Math.max(0, mob.hp)) + ' / ' + fmtN(mob.max);
+          let fs = 10;
+          ctx.font = 'bold ' + fs + 'px Galmuri11, sans-serif';
+          while (fs > 6 && ctx.measureText(label).width > bw - 6) { fs--; ctx.font = 'bold ' + fs + 'px Galmuri11, sans-serif'; }
+          ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+          ctx.fillText(label, bx + bw / 2, by + 11);
           const limit = mob.timeLimit || opts.data.combat.bossTimeLimit;
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by + 17, bw + 4, 6);
           ctx.fillStyle = bossT < 8 ? '#ff5a6a' : '#ffd84a'; ctx.fillRect(bx, by + 18, bw * Math.max(0, bossT) / limit, 4);
         }
+      }
+
+      // boss speech bubble
+      if (mob && mob.say) {
+        const sz = mob.size, text = mob.say.text;
+        ctx.font = 'bold 12px Galmuri11, sans-serif';
+        const maxW = 190, words = text.split(' '), rows = [];
+        let cur = '';
+        for (const w of words) {
+          const tryS = cur ? cur + ' ' + w : w;
+          if (ctx.measureText(tryS).width > maxW && cur) { rows.push(cur); cur = w; } else cur = tryS;
+        }
+        if (cur) rows.push(cur);
+        const tw = Math.max(...rows.map(r2 => ctx.measureText(r2).width)) + 20, th = rows.length * 16 + 12;
+        const headY = H - 34 - sz * 0.92;
+        const bx = Math.max(6, Math.min(W - tw - 6, mob.x + sz / 2 - tw / 2 - 30)), by = Math.max(46, headY - th - 12);
+        const a = Math.min(1, mob.say.life * 4, (D.bossTalkDuration - mob.say.life) * 8);
+        const pop = 1 + Math.max(0, 0.15 - (D.bossTalkDuration - mob.say.life)) * 1.5;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(bx + tw / 2, by + th / 2); ctx.scale(pop, pop); ctx.translate(-(bx + tw / 2), -(by + th / 2));
+        ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by - 2, tw + 4, th + 4);
+        ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, tw, th);
+        const tx = Math.max(bx + 10, Math.min(bx + tw - 20, mob.x + sz * 0.4));
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(tx - 2, by + th); ctx.lineTo(tx + 6, by + th + 12); ctx.lineTo(tx + 14, by + th); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(tx + 1, by + th - 1); ctx.lineTo(tx + 6, by + th + 8); ctx.lineTo(tx + 11, by + th - 1); ctx.fill();
+        ctx.fillStyle = '#c8102e'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        rows.forEach((r2, i) => ctx.fillText(r2, bx + tw / 2, by + 6 + 8 + i * 16));
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
       }
 
       // skill effects

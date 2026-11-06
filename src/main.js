@@ -547,7 +547,8 @@
         const bd = T.buildings.find(b => b.id === siegeTarget);
         const owner = L.deptList(D).find(d => d.id === state.territory.owners[bd.id]);
         const boss = D.battle.bosses[(bd.tier - 1) % D.battle.bosses.length];
-        return { def: { name: owner.name + ' 수비대장', sprite: boss.sprite, scale: boss.scale, siege: bd.id }, boss: true, siege: bd.id,
+        const lines = boss.lines.concat(D.battle.siegeLines.map(l => l.replace('{dept}', owner.name)));
+        return { def: { name: owner.name + ' 수비대장', sprite: boss.sprite, scale: boss.scale, siege: bd.id, lines }, boss: true, siege: bd.id,
           hp: L.siegeHp(bd.tier, D), atk: L.siegeAtk(bd.tier, D), timeLimit: T.siegeTimeLimit,
           bannerTitle: '⚔ ' + bd.name + ' 점령전 ⚔' };
       }
@@ -567,6 +568,7 @@
     heroAtk: () => L.heroAtk(state, D),
     classFx: () => D.classFx[state.classId],
     heroCrit: () => L.heroCrit(state, D),
+    onBossTalk: (mob, line) => logBattle('👑 ' + mob.def.name + ': "' + line + '"'),
     heroAspd: () => L.heroAspd(state, D),
     skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, fx: s.def.fx, type: s.def.type, anim: s.def.anim, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
     castSkill: (id) => {
