@@ -1,10 +1,5 @@
 <p align="center">
-  <h1 align="center">Claude Code Game Studios</h1>
-  <p align="center">
-    Claude Code 세션 하나를 완전한 게임 개발 스튜디오로 바꿔 줍니다.
-    <br />
-    에이전트 49개. 스킬 74개. 손발이 맞는 AI 팀 하나.
-  </p>
+  <h1 align="center">UNI Universe</h1>
 </p>
 
 <p align="center">
