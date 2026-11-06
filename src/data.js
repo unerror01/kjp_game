@@ -13,27 +13,87 @@ window.GAME_DATA = {
    */
   battle: {
     mobBase: '../assets/sprites/mobs/',
-    sceneHeight: 210,
+    sceneHeight: 230,
     heroX: 64,
     heroSize: 84,
-    mobSize: 84,
-    bossSize: 112,
+    mobSize: 72,
+    bossSize: 120,
     walkSpeed: 120,         // px/s ground scroll
     engageDistance: 74,     // px between hero and mob when the fight starts
-    mobHits: 4,
-    bossHits: 8,
-    hitInterval: 0.35,      // s between hero attacks
-    bossEvery: 8,           // every Nth mob is a boss
+    hitInterval: 0.4,       // s between hero auto attacks
     bossMult: 3,
     mobs: [
-      { name: '무임승차 슬라임', sprite: 'slime.png' }
+      { name: '무임승차 슬라임',   sprite: 'slime.png', hue: 0 },
+      { name: '지각 슬라임',       sprite: 'slime.png', hue: 160 },
+      { name: '과제 미루기 슬라임', sprite: 'slime.png', hue: 260 }
     ],
     bosses: [
-      { name: 'F폭격 교수',      sprite: 'professor.png' },
-      { name: '영어 회화 마왕',  sprite: 'english.png' },
-      { name: '이별의 망령',     sprite: 'breakup.png' },
-      { name: '입영통지 헌병',   sprite: 'army.png' }
+      { name: '무임승차 슬라임 킹', sprite: 'slime.png' },
+      { name: 'F폭격 교수',        sprite: 'professor.png' },
+      { name: '영어 회화 마왕',    sprite: 'english.png' },
+      { name: '이별의 망령',       sprite: 'breakup.png' },
+      { name: '입영통지 헌병',     sprite: 'army.png' }
     ]
+  },
+
+  /**
+   * Rounds and combat math. A round is `mobsPerRound` mobs; every `bossEvery`-th
+   * round is a single boss with `bossHpMult` × mob HP and a time limit. Failing
+   * the timer drops you back one round.
+   */
+  combat: {
+    mobsPerRound: 3,
+    bossEvery: 5,
+    mobHpBase: 40,
+    mobHpGrowth: 1.12,       // per round
+    bossHpMult: 20,
+    bossTimeLimit: 30,       // seconds
+    atkBase: 10,
+    atkPerLevel: 0.12        // +12% attack per level above 1
+  },
+
+  /**
+   * Attack skills: 3 per class, unlocked by level, upgraded with gold, auto-cast
+   * in battle when off cooldown. type 'nuke' = one hit of mult × ATK,
+   * 'multi' = `hits` hits of mult × ATK, 'haste' = attack speed × mult for `dur` s.
+   */
+  skills: {
+    dmgPerLevel: 0.25,       // +25% skill damage per skill level above 1
+    upgradeCostBase: 120,
+    upgradeCostGrowth: 1.55,
+    tierCostMult: [1, 2.5, 6],
+    byClass: {
+      insider: [
+        { id: 'flag',    name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
+        { id: 'groupcall', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
+        { id: 'insta',   name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
+      ],
+      hermit: [
+        { id: 'dagger',  name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
+        { id: 'shadow',  name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
+        { id: 'midnight', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
+      ],
+      berserker: [
+        { id: 'pencil',  name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
+        { id: 'cram',    name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
+        { id: 'deadline', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
+      ],
+      planner: [
+        { id: 'shield',  name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
+        { id: 'checklist', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
+        { id: 'timeline', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
+      ],
+      foodie: [
+        { id: 'tray',    name: '식판 던지기',   unlock: 1,  type: 'nuke',  mult: 3,   cd: 4.5, desc: '식판 투척' },
+        { id: 'soup',    name: '뜨거운 국밥',   unlock: 5,  type: 'multi', hits: 6, mult: 1.1, cd: 11, desc: '펄펄 끓는 국물 세례' },
+        { id: 'feast',   name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
+      ],
+      rogue: [
+        { id: 'dash',    name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
+        { id: 'clones',  name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
+        { id: 'comet',   name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
+      ]
+    }
   },
 
   /** Idle farming (MVP 2). Rates are per second at level 1 with no bonuses. */

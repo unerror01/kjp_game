@@ -56,7 +56,8 @@
       equipment, quests,
       plannerBuffUntil: 0,
       rogueDay: '', rogueUsedSec: 0,
-      totalStudySec: 0
+      totalStudySec: 0,
+      round: 1, roundKills: 0, kills: 0, skills: {}
     };
   }
 
@@ -286,7 +287,90 @@
     return top[Math.floor(rng() * top.length)];
   }
 
+  // ---------- rounds & combat ----------
+
+  /** Hero auto-attack damage. */
+  function heroAtk(state, data) {
+    const c = data.combat;
+    return c.atkBase * (1 + c.atkPerLevel * (state.level - 1));
+  }
+
+  /** { isBoss, count } for a round number (1-based). */
+  function roundInfo(round, data) {
+    const isBoss = round % data.combat.bossEvery === 0;
+    return { isBoss, count: isBoss ? 1 : data.combat.mobsPerRound };
+  }
+
+  /** Max HP of a mob in `round`. */
+  function mobHp(round, isBoss, data) {
+    const c = data.combat;
+    const hp = c.mobHpBase * Math.pow(c.mobHpGrowth, round - 1);
+    return Math.ceil(isBoss ? hp * c.bossHpMult : hp);
+  }
+
+  /** Records a kill. Returns { roundCleared, round } after the update. */
+  function recordKill(state, data) {
+    const info = roundInfo(state.round || 1, data);
+    state.roundKills = (state.roundKills || 0) + 1;
+    state.kills = (state.kills || 0) + 1;
+    if (state.roundKills >= info.count) {
+      state.round = (state.round || 1) + 1;
+      state.roundKills = 0;
+      return { roundCleared: true, round: state.round };
+    }
+    return { roundCleared: false, round: state.round };
+  }
+
+  /** Boss timer ran out: drop back one round. */
+  function failBoss(state) {
+    state.round = Math.max(1, (state.round || 1) - 1);
+    state.roundKills = 0;
+  }
+
+  /** This class's skills with unlock state and level. */
+  function classSkills(state, data) {
+    const list = data.skills.byClass[state.classId] || [];
+    return list.map((def, tier) => ({
+      def, tier,
+      unlocked: state.level >= def.unlock,
+      level: (state.skills && state.skills[def.id]) || 1
+    }));
+  }
+
+  function skillUpgradeCost(tier, level, data) {
+    const s = data.skills;
+    return Math.floor(s.upgradeCostBase * s.tierCostMult[tier] * Math.pow(s.upgradeCostGrowth, level - 1));
+  }
+
+  /** Spends gold to level a skill. Returns true on success. */
+  function upgradeSkill(state, skillId, data) {
+    const sk = classSkills(state, data).find(s => s.def.id === skillId);
+    if (!sk || !sk.unlocked) return false;
+    const cost = skillUpgradeCost(sk.tier, sk.level, data);
+    if (state.gold < cost) return false;
+    state.gold -= cost;
+    if (!state.skills) state.skills = {};
+    state.skills[skillId] = sk.level + 1;
+    return true;
+  }
+
+  /** Damage per hit of a skill at its current level (haste skills return 0). */
+  function skillHitDamage(state, skillId, data) {
+    const sk = classSkills(state, data).find(s => s.def.id === skillId);
+    if (!sk || sk.def.type === 'haste') return 0;
+    return heroAtk(state, data) * sk.def.mult * (1 + data.skills.dmgPerLevel * (sk.level - 1));
+  }
+
+  /** Haste multiplier and duration for a haste skill, scaled by level (+10%/level duration). */
+  function skillHaste(state, skillId, data) {
+    const sk = classSkills(state, data).find(s => s.def.id === skillId);
+    if (!sk || sk.def.type !== 'haste') return null;
+    return { mult: sk.def.mult, dur: sk.def.dur * (1 + 0.1 * (sk.level - 1)) };
+  }
+
   const api = {
+    heroAtk, roundInfo, mobHp, recordKill, failBoss, classSkills, skillUpgradeCost, upgradeSkill,
+    skillHitDamage, skillHaste,
     HOUR, expToNext, rollLine, newState, potentialPct, equipBonus, skillModifiers, comboStacks,
     rates, addExp, tick, accrue, payout, applyOffline, breakCombo, upgradeCost, upgrade, rerollCost, reroll,
     questStatus, completeQuest, assignClass

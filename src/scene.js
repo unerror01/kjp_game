@@ -80,8 +80,10 @@
     let W = 360, H = D.sceneHeight, dpr = 1;
     let heroFrames = [], mobSprites = {}, bossSprites = {};
     let scroll = 0, t = 0, last = 0, raf = 0;
-    let mob = null, gap = 60, kills = opts.kills || 0;
-    let hitT = 0, lunge = 0;
+    let mob = null, gap = 60;
+    let hitT = 0, lunge = 0, haste = 0, hasteMult = 1, bossT = 0, castLabel = null;
+    const cooldowns = {};       // skill id -> seconds left
+    const pendingHits = [];     // { at, dmg } queued multi-hit damage
     const floats = [];
 
     function resize() {
@@ -92,11 +94,46 @@
     }
 
     function spawn() {
-      const isBoss = (kills + 1) % D.bossEvery === 0;
-      const pool = isBoss ? D.bosses : D.mobs;
-      const def = pool[Math.floor(Math.random() * pool.length)];
-      const hits = isBoss ? D.bossHits : D.mobHits;
-      mob = { def, boss: isBoss, x: W + 40, hp: hits, max: hits, flash: 0, dying: 0, size: isBoss ? D.bossSize : D.mobSize };
+      const m = opts.nextMob(); // { def, boss, hp }
+      mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
+              size: m.boss ? D.bossSize : D.mobSize };
+      bossT = m.boss ? opts.data.combat.bossTimeLimit : 0;
+      if (m.boss) float('⚠ BOSS ⚠', W / 2, 60, '#ff5a6a', true);
+    }
+
+    function fmtN(n) { return Math.floor(n).toLocaleString('ko-KR'); }
+
+    function damage(dmg, big) {
+      if (!mob || mob.dying > 0) return;
+      mob.hp -= dmg; mob.flash = 0.12;
+      float(fmtN(dmg), mob.x + mob.size / 2 + (Math.random() - 0.5) * 30, H - 40 - mob.size, big ? '#ffd84a' : '#ffffff', big);
+      if (mob.hp <= 0) kill();
+    }
+
+    function kill() {
+      mob.hp = 0; mob.dying = 0.5; pendingHits.length = 0;
+      const r = opts.onKill(mob);
+      const cx = mob.x + mob.size / 2, top = H - 44 - mob.size;
+      float('+' + fmtN(r.gold) + ' G', cx, top - 4, '#ffd84a', true);
+      float('+' + fmtN(r.exp) + ' EXP', cx, top + 14, '#5af0a8', true);
+      if (r.levels) float('LEVEL UP!', D.heroX + D.heroSize / 2, H - 50 - D.heroSize, '#ff9a3c', true);
+      if (r.roundCleared) float('ROUND ' + r.round, W / 2, 70, '#ffffff', true);
+    }
+
+    /** Auto-casts every ready, unlocked skill while fighting. */
+    function castSkills(dt) {
+      for (const id in cooldowns) cooldowns[id] = Math.max(0, cooldowns[id] - dt);
+      if (!mob || mob.dying > 0 || mob.x - D.heroX > D.engageDistance) return;
+      for (const s of opts.skills()) {
+        if (!s.unlocked || (cooldowns[s.id] || 0) > 0) continue;
+        cooldowns[s.id] = s.cd;
+        castLabel = { text: s.name, life: 1 };
+        lunge = 0.2;
+        const r = opts.castSkill(s.id);
+        if (r.haste) { haste = r.haste.dur; hasteMult = r.haste.mult; }
+        r.hits.forEach((d, i) => pendingHits.push({ at: i * 0.09, dmg: d }));
+        break; // one skill per frame
+      }
     }
 
     function float(text, x, y, color, big) {
@@ -183,17 +220,16 @@
       ctx.fillRect(0, y + 22, W, 2);
     }
 
-    function drawSprite(sp, x, y, size, alpha, flash) {
+    function drawSprite(sp, x, y, size, alpha, flash, hue) {
       if (!sp) return;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.imageSmoothingEnabled = false;
+      const f = [];
+      if (hue) f.push('hue-rotate(' + hue + 'deg)');
+      if (flash > 0) f.push('brightness(2.2)');
+      if (f.length) ctx.filter = f.join(' ');
       ctx.drawImage(sp, x, y, size, size);
-      if (flash > 0) {
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.8, flash * 4) + ')';
-        ctx.fillRect(x, y, size, size);
-      }
       ctx.restore();
     }
 
@@ -213,22 +249,27 @@
         if (mob) mob.x -= D.walkSpeed * dt;
         else if ((gap -= D.walkSpeed * dt) <= 0) spawn();
       } else if (mob && mob.dying <= 0) {
-        hitT += dt;
+        hitT += dt * (haste > 0 ? hasteMult : 1);
         if (hitT >= D.hitInterval) {
-          hitT = 0; lunge = 0.14; mob.hp--; mob.flash = 0.12;
-          const lv = opts.getLevel();
-          float('-' + (lv * 7 + Math.floor(Math.random() * 9)), mob.x + mob.size / 2, H - 40 - mob.size, '#ffffff');
-          if (mob.hp <= 0) {
-            mob.dying = 0.5;
-            kills++;
-            const r = opts.onKill(mob);
-            const cx = mob.x + mob.size / 2, top = H - 44 - mob.size;
-            float('+' + Math.floor(r.gold).toLocaleString('ko-KR') + ' G', cx, top - 4, '#ffd84a', true);
-            float('+' + Math.floor(r.exp).toLocaleString('ko-KR') + ' EXP', cx, top + 14, '#5af0a8', true);
-            if (r.levels) float('LEVEL UP!', D.heroX + D.heroSize / 2, H - 50 - D.heroSize, '#ff9a3c', true);
+          hitT = 0; lunge = 0.14;
+          damage(opts.heroAtk() * (0.9 + Math.random() * 0.2), false);
+        }
+        if (mob && mob.boss && mob.dying <= 0) {
+          bossT -= dt;
+          if (bossT <= 0) {
+            opts.onBossFail(mob);
+            float('시간 초과… ROUND 후퇴', W / 2, 70, '#ff5a6a', true);
+            mob.dying = 0.5; pendingHits.length = 0;
           }
         }
       }
+      // queued skill hits
+      for (const h of pendingHits) h.at -= dt;
+      const ready = pendingHits.filter(h => h.at <= 0);
+      for (const h of ready) pendingHits.splice(pendingHits.indexOf(h), 1);
+      for (const h of ready) damage(h.dmg, true);
+      castSkills(dt);
+      haste = Math.max(0, haste - dt);
       if (mob && mob.dying > 0) {
         mob.dying -= dt;
         if (mob.dying <= 0) { mob = null; gap = 40 + Math.random() * 60; }
@@ -249,6 +290,10 @@
       const hs = D.heroSize;
       shadow(hx + hs / 2, hs * 0.6);
       const hf = heroFrames.length ? heroFrames[Math.floor(t * 6) % heroFrames.length] : null;
+      if (haste > 0) {
+        ctx.fillStyle = 'rgba(255,216,74,' + (0.25 + 0.15 * Math.sin(t * 20)) + ')';
+        ctx.beginPath(); ctx.ellipse(hx + hs / 2, H - 34 - hs / 2, hs * 0.55, hs * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+      }
       drawSprite(hf, hx, H - 34 - hs - bob, hs, 1, 0);
       if (fighting && lunge > 0) {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
@@ -261,14 +306,56 @@
         const alpha = mob.dying > 0 ? Math.max(0, mob.dying / 0.5) : 1;
         const my = H - 34 - mob.size + (Math.sin(t * 3) * 2);
         shadow(mob.x + mob.size / 2, mob.size * 0.6);
-        drawSprite(sp, mob.x + shake, my, mob.size, alpha, mob.flash);
-        if (mob.dying <= 0) {
-          const bw = mob.size * 0.8, bx = mob.x + mob.size * 0.1, by = my - 10;
+        drawSprite(sp, mob.x + shake, my, mob.size, alpha, mob.flash, mob.boss ? 0 : mob.def.hue);
+        if (mob.dying <= 0 && !mob.boss) {
+          const bw = mob.size * 0.8, bx = mob.x + mob.size * 0.1, by = my - 4;
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 7);
-          ctx.fillStyle = mob.boss ? '#ff5a6a' : '#ff9a3c'; ctx.fillRect(bx, by, bw * mob.hp / mob.max, 5);
-          ctx.font = (mob.boss ? 'bold 12px' : '10px') + ' Galmuri11, sans-serif'; ctx.textAlign = 'center';
-          ctx.fillStyle = '#000'; ctx.fillText((mob.boss ? '👑 ' : '') + mob.def.name, mob.x + mob.size / 2 + 1, by - 4);
-          ctx.fillStyle = '#fff'; ctx.fillText((mob.boss ? '👑 ' : '') + mob.def.name, mob.x + mob.size / 2, by - 5);
+          ctx.fillStyle = '#ff9a3c'; ctx.fillRect(bx, by, bw * Math.max(0, mob.hp) / mob.max, 5);
+          ctx.font = '10px Galmuri11, sans-serif'; ctx.textAlign = 'center';
+          ctx.fillStyle = '#000'; ctx.fillText(mob.def.name, mob.x + mob.size / 2 + 1, by - 3);
+          ctx.fillStyle = '#fff'; ctx.fillText(mob.def.name, mob.x + mob.size / 2, by - 4);
+        }
+        if (mob.dying <= 0 && mob.boss && mob.x < W) {
+          // boss HP bar across the top, plus timer
+          const bx = 110, bw = W - 120, by = 10;
+          ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by - 2, bw + 4, 18);
+          ctx.fillStyle = '#5a1020'; ctx.fillRect(bx, by, bw, 14);
+          ctx.fillStyle = '#ff3a50'; ctx.fillRect(bx, by, bw * Math.max(0, mob.hp) / mob.max, 14);
+          ctx.font = 'bold 10px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+          ctx.fillText('👑 ' + mob.def.name + '  ' + fmtN(Math.max(0, mob.hp)) + ' / ' + fmtN(mob.max), bx + bw / 2, by + 11);
+          const limit = opts.data.combat.bossTimeLimit;
+          ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by + 17, bw + 4, 6);
+          ctx.fillStyle = bossT < 8 ? '#ff5a6a' : '#ffd84a'; ctx.fillRect(bx, by + 18, bw * Math.max(0, bossT) / limit, 4);
+        }
+      }
+
+      // skill bar (bottom right, over the path)
+      const sk = opts.skills();
+      const sw = 66, sh = 26;
+      sk.forEach((s, i) => {
+        const x = W - (sk.length - i) * (sw + 4) - 2, y = H - sh - 6;
+        ctx.fillStyle = s.unlocked ? '#101a5ccc' : '#000a'; ctx.fillRect(x, y, sw, sh);
+        ctx.strokeStyle = s.unlocked ? '#e8ecff' : '#555'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.5, y + 0.5, sw - 1, sh - 1);
+        if (s.unlocked && cooldowns[s.id] > 0) {
+          ctx.fillStyle = '#000b'; ctx.fillRect(x, y, sw * cooldowns[s.id] / s.cd, sh);
+        }
+        ctx.font = '9px Galmuri11, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = s.unlocked ? '#fff' : '#888';
+        ctx.fillText(s.unlocked ? s.name : '🔒 Lv.' + s.unlock, x + sw / 2, y + 11);
+        if (s.unlocked) {
+          ctx.fillStyle = '#ffd84a';
+          ctx.fillText(cooldowns[s.id] > 0 ? cooldowns[s.id].toFixed(1) + 's' : 'Lv.' + s.level, x + sw / 2, y + 22);
+        }
+      });
+      if (castLabel) {
+        castLabel.life -= dt;
+        if (castLabel.life <= 0) castLabel = null;
+        else {
+          ctx.globalAlpha = Math.min(1, castLabel.life * 2);
+          ctx.font = 'bold 16px Galmuri11, sans-serif'; ctx.textAlign = 'left';
+          ctx.fillStyle = '#000'; ctx.fillText('【' + castLabel.text + '】', D.heroX - 20 + 1, H - 50 - D.heroSize + 1);
+          ctx.fillStyle = '#ffd84a'; ctx.fillText('【' + castLabel.text + '】', D.heroX - 20, H - 50 - D.heroSize);
+          ctx.globalAlpha = 1;
         }
       }
 
@@ -283,10 +370,13 @@
         ctx.globalAlpha = 1;
       }
 
-      // kill counter
-      ctx.font = '11px Galmuri11, sans-serif'; ctx.textAlign = 'left';
-      ctx.fillStyle = '#0008'; ctx.fillRect(6, 6, 92, 18);
-      ctx.fillStyle = '#fff'; ctx.fillText('⚔ 처치 ' + kills, 12, 19);
+      // round HUD
+      const rd = opts.getRound();
+      ctx.font = 'bold 11px Galmuri11, sans-serif'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#000a'; ctx.fillRect(6, 6, 96, 32);
+      ctx.fillStyle = rd.isBoss ? '#ff5a6a' : '#ffd84a'; ctx.fillText('ROUND ' + rd.round + (rd.isBoss ? ' BOSS' : ''), 12, 19);
+      ctx.font = '10px Galmuri11, sans-serif'; ctx.fillStyle = '#fff';
+      ctx.fillText(rd.isBoss ? '제한 ' + opts.data.combat.bossTimeLimit + '초' : '처치 ' + rd.roundKills + ' / ' + rd.count, 12, 32);
 
       raf = requestAnimationFrame(frame);
     }
@@ -305,7 +395,8 @@
       },
       start() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } },
       stop() { cancelAnimationFrame(raf); raf = 0; },
-      get kills() { return kills; }
+      /** Drop the current mob (e.g. after a reset). */
+      reset() { mob = null; gap = 60; pendingHits.length = 0; for (const k in cooldowns) delete cooldowns[k]; haste = 0; }
     };
   }
 

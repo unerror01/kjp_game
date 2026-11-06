@@ -189,7 +189,7 @@
     $('btn-reset').onclick = () => { if (confirm('진행 상황이 모두 사라집니다. 다시 시작할까요?')) { wipe(); state = null; stop(); if (scene) scene.stop(); startTest(); } };
   }
 
-  function renderAll() { renderHero(); renderEquip(); renderQuests(); renderMe(); }
+  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderQuests(); renderMe(); }
 
   // ---------- clock ----------
   let sessionSec = 0;
@@ -214,6 +214,7 @@
         b.disabled = state.gold < cost;
       }
     }
+    for (const b of $('tab-skill').querySelectorAll('[data-cost]')) b.disabled = state.gold < +b.dataset.cost;
     if (Math.floor(sessionSec) % 5 === 0) save();
   }
   function start() {
@@ -224,21 +225,67 @@
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
   let scene = null;
-  /** Scene callback: a mob died, pay the banked study gains. */
+  /** Scene callback: a mob died, pay the banked study gains and advance the round. */
   function onKill(mob) {
     const r = L.payout(state, D, mob.boss ? D.battle.bossMult : 1);
-    state.kills = (state.kills || 0) + 1;
-    if (r.levels) toast('🎉 레벨 업! Lv.' + state.level);
+    const k = L.recordKill(state, D);
+    if (r.levels) { toast('🎉 레벨 업! Lv.' + state.level); renderSkills(); }
     if (mob.boss) toast('👑 ' + mob.def.name + ' 처치! 보상 x' + D.battle.bossMult);
     save();
     renderHero();
-    return r;
+    return Object.assign(r, k);
+  }
+  const sceneOpts = {
+    data: D,
+    onKill,
+    onBossFail: () => { L.failBoss(state); save(); toast('보스에게 패배… 강화하고 다시 도전!'); },
+    nextMob: () => {
+      const round = state.round || 1;
+      const info = L.roundInfo(round, D);
+      const pool = info.isBoss ? D.battle.bosses : D.battle.mobs;
+      const def = info.isBoss ? pool[(Math.floor(round / D.combat.bossEvery) - 1) % pool.length]
+                              : pool[Math.floor(Math.random() * pool.length)];
+      return { def, boss: info.isBoss, hp: L.mobHp(round, info.isBoss, D) };
+    },
+    getRound: () => {
+      const round = state.round || 1;
+      return Object.assign({ round, roundKills: state.roundKills || 0 }, L.roundInfo(round, D));
+    },
+    heroAtk: () => L.heroAtk(state, D),
+    skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
+    castSkill: (id) => {
+      const def = D.skills.byClass[state.classId].find(s => s.id === id);
+      const dmg = L.skillHitDamage(state, id, D);
+      return { hits: def.type === 'haste' ? [] : Array.from({ length: def.hits || 1 }, () => dmg), haste: L.skillHaste(state, id, D) };
+    }
+  };
+
+  function renderSkills() {
+    if (!state) return;
+    const list = L.classSkills(state, D);
+    $('tab-skill').innerHTML = '<div class="small">전투 중 자동 발동 · 레벨에 따라 해금 · 골드로 강화</div>' + list.map(s => {
+      const d = s.def;
+      const cost = L.skillUpgradeCost(s.tier, s.level, D);
+      const eff = d.type === 'haste' ? '공격 속도 x' + d.mult + ' · ' + L.skillHaste(state, d.id, D).dur.toFixed(1) + '초'
+        : (d.hits ? d.hits + '회 × ' : '') + fmt(L.skillHitDamage(state, d.id, D)) + ' 피해';
+      return '<div class="item"><div class="item-head"><span class="item-name">' + esc(d.name) +
+        (s.unlocked ? ' <span class="plus">Lv.' + s.level + '</span>' : '') + '</span><span class="small">쿨타임 ' + d.cd + '초</span></div>' +
+        '<div class="small">' + esc(d.desc) + '</div>' +
+        (s.unlocked
+          ? '<div class="lines"><div class="line"><span>' + eff + '</span></div></div><div class="btns"><button class="btn small-btn" data-sk="' + d.id + '" data-cost="' + cost + '"' + (state.gold < cost ? ' disabled' : '') + '>강화 ' + fmt(cost) + 'G</button></div>'
+          : '<div class="lines"><div class="line"><span>🔒 Lv.' + d.unlock + '에 해금</span></div></div>') +
+        '</div>';
+    }).join('');
+    for (const b of $('tab-skill').querySelectorAll('[data-sk]')) b.onclick = () => {
+      if (L.upgradeSkill(state, b.dataset.sk, D)) { toast('스킬 강화!'); save(); renderHero(); renderSkills(); }
+    };
   }
 
   function enterGame(offlineReport) {
     show('screen-game');
     const c = D.classes[state.classId];
-    if (!scene) scene = window.Scene.create($('scene'), { data: D, onKill, getLevel: () => state.level, kills: state.kills || 0 });
+    if (!scene) scene = window.Scene.create($('scene'), sceneOpts);
+    else scene.reset();
     scene.setHero((c.frames || [c.sprite]).map(f => D.spriteBase + f));
     scene.start();
     renderAll();
@@ -270,7 +317,7 @@
   // tabs
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
     for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-    for (const p of ['equip', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
+    for (const p of ['equip', 'skill', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
     renderAll();
   };
   $('btn-pick').onclick = () => $('pick-box').classList.toggle('hidden');
