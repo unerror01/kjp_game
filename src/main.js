@@ -180,7 +180,8 @@
       ['경험치 배율', 'x' + r.expMul.toFixed(2)],
       ['골드 배율', 'x' + r.goldMul.toFixed(2)],
       ['퀘스트 보상', pct(L.equipBonus(state, 'quest', D) + L.potentialPct(state, 'quest', D, now) / 100)],
-      ['오프라인 효율', Math.round(D.idle.offlineRate * (1 + L.equipBonus(state, 'offline', D) + L.potentialPct(state, 'offline', D, now) / 100) * 100) + '%']
+      ['오프라인 효율', Math.round(L.offlineEfficiency(state, D, now) * 100) + '%'],
+      ['라운드', String(state.round || 1)]
     ];
     $('tab-me').innerHTML = '<div class="row"><div class="sprite-frame mini"><img src="' + sprite(state.classId) + '" alt=""></div>' +
       '<div class="skill-box" style="flex:1;margin:0"><b>[' + esc(c.skill) + ']</b><br>' + esc(c.desc) + '</div></div>' +
@@ -189,7 +190,37 @@
     $('btn-reset').onclick = () => { if (confirm('진행 상황이 모두 사라집니다. 다시 시작할까요?')) { wipe(); state = null; stop(); if (scene) scene.stop(); startTest(); } };
   }
 
-  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderQuests(); renderMe(); }
+  function renderRelics() {
+    if (!state) return;
+    const R = D.relics;
+    const owned = state.relics || {};
+    const sets = R.sets.map(set => {
+      const n = L.relicCount(state, set);
+      const pieces = set.pieces.map(p => '<span class="relic' + (owned[p.id] ? ' owned' : '') + '">' +
+        (owned[p.id] ? p.icon : '❔') + '<small>' + esc(p.name) + '</small></span>').join('');
+      const eff = (need, e) => '<div class="line' + (n >= need ? ' on' : '') + '"><span>' + need + '세트</span><span>' + esc(e.label) + '</span></div>';
+      return '<div class="item"><div class="item-head"><span class="item-name">' + set.icon + ' ' + esc(set.name) +
+        '</span><span class="small">' + n + ' / 4</span></div><div class="relic-row">' + pieces + '</div>' +
+        '<div class="lines set-eff">' + eff(2, set.two) + eff(4, set.four) + '</div></div>';
+    }).join('');
+    $('tab-relic').innerHTML = '<div class="small">캠퍼스 유물 뽑기 · 모으면 세트 효과 자동 발동 · 중복은 ' + R.dupRefund + 'G 환급</div>' +
+      '<div class="btns" style="margin:8px 0">' +
+      '<button class="btn small-btn" data-pull="1" data-cost="' + R.pullCost + '"' + (state.gold < R.pullCost ? ' disabled' : '') + '>1회 뽑기 ' + fmt(R.pullCost) + 'G</button>' +
+      '<button class="btn small-btn" data-pull="10" data-cost="' + R.tenCost + '"' + (state.gold < R.tenCost ? ' disabled' : '') + '>10연차 ' + fmt(R.tenCost) + 'G</button></div>' + sets;
+    for (const b of $('tab-relic').querySelectorAll('[data-pull]')) b.onclick = () => {
+      const n = +b.dataset.pull;
+      const res = L.pullRelics(state, D, n, n === 1 ? R.pullCost : R.tenCost, rng);
+      if (!res) return;
+      save();
+      const news = res.filter(x => !x.dup).length;
+      modal('<div>유물 뽑기 결과</div><div class="relic-row" style="justify-content:center;margin:10px 0">' +
+        res.map(x => '<span class="relic owned' + (x.dup ? ' dup' : ' new') + '">' + x.piece.icon + '<small>' + esc(x.piece.name) +
+          (x.dup ? '<br>+' + R.dupRefund + 'G' : '<br>NEW!') + '</small></span>').join('') + '</div>' +
+        '<div class="small">새 유물 ' + news + '개</div>', renderAll);
+    };
+  }
+
+  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderRelics(); renderQuests(); renderMe(); }
 
   // ---------- clock ----------
   let sessionSec = 0;
@@ -214,7 +245,7 @@
         b.disabled = state.gold < cost;
       }
     }
-    for (const b of $('tab-skill').querySelectorAll('[data-cost]')) b.disabled = state.gold < +b.dataset.cost;
+    for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
     if (Math.floor(sessionSec) % 5 === 0) save();
   }
   function start() {
@@ -227,10 +258,11 @@
   let scene = null;
   /** Scene callback: a mob died, pay the banked study gains and advance the round. */
   function onKill(mob) {
-    const r = L.payout(state, D, mob.boss ? D.battle.bossMult : 1);
+    const bossMult = D.battle.bossMult * (1 + L.relicBonus(state, D).bossReward);
+    const r = L.payout(state, D, mob.boss ? bossMult : 1);
     const k = L.recordKill(state, D);
     if (r.levels) { toast('🎉 레벨 업! Lv.' + state.level); renderSkills(); }
-    if (mob.boss) toast('👑 ' + mob.def.name + ' 처치! 보상 x' + D.battle.bossMult);
+    if (mob.boss) toast('👑 ' + mob.def.name + ' 처치! 보상 x' + bossMult);
     save();
     renderHero();
     return Object.assign(r, k);
@@ -317,7 +349,7 @@
   // tabs
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
     for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-    for (const p of ['equip', 'skill', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
+    for (const p of ['equip', 'skill', 'relic', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
     renderAll();
   };
   $('btn-pick').onclick = () => $('pick-box').classList.toggle('hidden');

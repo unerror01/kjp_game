@@ -96,6 +96,36 @@ window.GAME_DATA = {
     }
   },
 
+  /**
+   * Relic gacha: 3 sets × 4 pieces, uniform odds, no equipping — owning pieces
+   * activates set effects (see logic.js#relicBonus for the stat meanings).
+   */
+  relics: {
+    pullCost: 300,
+    tenCost: 2700,
+    dupRefund: 50,
+    sets: [
+      { id: 'checkshirt', name: '고인물의 체크셔츠', icon: '👕',
+        pieces: [
+          { id: 'shirt', name: '체크셔츠', icon: '👕' }, { id: 'idcard', name: '학생증', icon: '🪪' },
+          { id: 'slipper', name: '슬리퍼', icon: '🩴' }, { id: 'keyring', name: '백팩 키링', icon: '🔑' } ],
+        two:  { stat: 'gold', value: 0.15, label: '골드 +15%' },
+        four: { stat: 'bossReward', value: 1.0, label: '보스 보상 +100%' } },
+      { id: 'freshman', name: '새내기의 꿈', icon: '🌱',
+        pieces: [
+          { id: 'jacket', name: '새 학잠', icon: '🧥' }, { id: 'timetable', name: '시간표', icon: '🗓' },
+          { id: 'nametag', name: 'OT 명찰', icon: '📛' }, { id: 'guidebook', name: '신입생 가이드북', icon: '📘' } ],
+        two:  { stat: 'exp', value: 0.15, label: 'EXP +15%' },
+        four: { stat: 'levelBonusMult', value: 2, label: '레벨 보너스 2배' } },
+      { id: 'library', name: '도서관 지박령', icon: '📚',
+        pieces: [
+          { id: 'seat', name: '열람실 좌석표', icon: '🎫' }, { id: 'earplug', name: '귀마개', icon: '🎧' },
+          { id: 'americano', name: '아메리카노', icon: '☕' }, { id: 'highlighter', name: '형광펜', icon: '🖍' } ],
+        two:  { stat: 'offline', value: 0.20, label: '오프라인 효율 +20%' },
+        four: { stat: 'comboMax', value: 20, label: '집중 콤보 최대 20스택' } }
+    ]
+  },
+
   /** Idle farming (MVP 2). Rates are per second at level 1 with no bonuses. */
   idle: {
     baseExpPerSec: 1,

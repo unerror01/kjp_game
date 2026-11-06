@@ -109,6 +109,18 @@ body {
 @keyframes flash { 0% { background: #fff4; } 100% { background: transparent; } }
 .btns { display: flex; gap: 6px; justify-content: flex-end; }
 
+.relic-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.relic {
+  width: 64px; display: flex; flex-direction: column; align-items: center; font-size: 22px;
+  background: #0a1240; border: 2px solid #3a4bb0; border-radius: 4px; padding: 4px 2px; opacity: .45;
+}
+.relic small { font-size: 9px; text-align: center; line-height: 1.2; color: var(--dim); }
+.relic.owned { opacity: 1; border-color: var(--gold); }
+.relic.new { box-shadow: 0 0 8px var(--gold); }
+.relic.dup { border-color: #3a4bb0; }
+.set-eff .line { color: var(--dim); }
+.set-eff .line.on { color: var(--exp); }
+.tab { font-size: 13px; }
 .quest { border: 2px solid #3a4bb0; border-radius: 4px; padding: 10px; margin: 8px 0; background: #0a1240; }
 .quest.urgent { border-color: var(--red); }
 .quest.done { opacity: .55; }

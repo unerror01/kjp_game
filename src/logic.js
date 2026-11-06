@@ -124,18 +124,72 @@
     return m;
   }
 
+  // ---------- relics ----------
+
+  /** Number of pieces owned from a set. */
+  function relicCount(state, set) {
+    return set.pieces.filter(p => state.relics && state.relics[p.id]).length;
+  }
+
+  /**
+   * Active set bonuses. Each set's 2-piece and 4-piece effect is { stat, value }:
+   * gold/exp/offline are additive fractions, bossReward adds to the boss payout
+   * multiplier as a fraction, levelBonusMult multiplies the per-level bonus,
+   * comboMax replaces the combo stack cap.
+   */
+  function relicBonus(state, data) {
+    const b = { gold: 0, exp: 0, offline: 0, bossReward: 0, levelBonusMult: 1, comboMax: data.idle.comboMaxStacks };
+    for (const set of data.relics.sets) {
+      const n = relicCount(state, set);
+      for (const [need, eff] of [[2, set.two], [4, set.four]]) {
+        if (n < need) continue;
+        if (eff.stat === 'levelBonusMult') b.levelBonusMult *= eff.value;
+        else if (eff.stat === 'comboMax') b.comboMax = Math.max(b.comboMax, eff.value);
+        else b[eff.stat] += eff.value;
+      }
+    }
+    return b;
+  }
+
+  /**
+   * Pulls `count` relics (uniform over all pieces). Spends `cost`; duplicates refund
+   * `dupRefund` gold each. Returns [{ piece, set, dup }] or null if gold is short.
+   */
+  function pullRelics(state, data, count, cost, rng) {
+    if (state.gold < cost) return null;
+    state.gold -= cost;
+    if (!state.relics) state.relics = {};
+    const all = [];
+    for (const set of data.relics.sets) for (const piece of set.pieces) all.push({ piece, set });
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      const r = all[Math.floor(rng() * all.length)];
+      const dup = !!state.relics[r.piece.id];
+      if (dup) state.gold += data.relics.dupRefund;
+      state.relics[r.piece.id] = true;
+      out.push({ piece: r.piece, set: r.set, dup });
+    }
+    return out;
+  }
+
+  /** Offline efficiency (fraction of on-screen rate). */
+  function offlineEfficiency(state, data, now) {
+    return data.idle.offlineRate * (1 + equipBonus(state, 'offline', data) + potentialPct(state, 'offline', data, now) / 100 + relicBonus(state, data).offline);
+  }
+
   function comboStacks(state, data) {
-    return Math.min(data.idle.comboMaxStacks, Math.floor(state.comboSeconds / data.idle.comboSecondsPerStack));
+    return Math.min(relicBonus(state, data).comboMax, Math.floor(state.comboSeconds / data.idle.comboSecondsPerStack));
   }
 
   /** Per-second rates on screen, with a breakdown for the UI. */
   function rates(state, data, now) {
     const i = data.idle;
-    const lvl = (state.level - 1) * i.levelBonusPerLevel;
+    const rb = relicBonus(state, data);
+    const lvl = (state.level - 1) * i.levelBonusPerLevel * rb.levelBonusMult;
     const combo = comboStacks(state, data) * i.comboBonusPerStack;
     const sk = skillModifiers(state, data, now);
-    const expMul = 1 + lvl + combo + sk.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
-    const goldMul = (1 + lvl + combo + sk.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
+    const expMul = 1 + lvl + combo + sk.exp + rb.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
+    const goldMul = (1 + lvl + combo + sk.gold + rb.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
     return { expPerSec: i.baseExpPerSec * expMul, goldPerSec: i.baseGoldPerSec * goldMul, expMul, goldMul, combo, skill: sk };
   }
 
@@ -206,7 +260,7 @@
     if (seconds < 60) { state.lastTick = now; return { seconds: 0, exp: 0, gold: 0, levels: 0 }; }
     const base = { ...state, comboSeconds: 0 };
     const r = rates(base, data, now);
-    const eff = i.offlineRate * (1 + equipBonus(state, 'offline', data) + potentialPct(state, 'offline', data, now) / 100);
+    const eff = offlineEfficiency(state, data, now);
     const exp = r.expPerSec * seconds * eff;
     const gold = (r.goldPerSec / r.skill.goldMult) * seconds * eff; // rogue's clone needs you on screen
     state.gold += gold;
@@ -369,6 +423,7 @@
   }
 
   const api = {
+    relicCount, relicBonus, pullRelics, offlineEfficiency,
     heroAtk, roundInfo, mobHp, recordKill, failBoss, classSkills, skillUpgradeCost, upgradeSkill,
     skillHitDamage, skillHaste,
     HOUR, expToNext, rollLine, newState, potentialPct, equipBonus, skillModifiers, comboStacks,
