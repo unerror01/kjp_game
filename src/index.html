@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1236">
+  <title>UNI-VERSE : 인천대 정복 RPG</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.39.3/dist/galmuri.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Title / Uni test -->
+    <section id="screen-test" class="screen">
+      <header class="logo">
+        <div class="logo-sub">인천대 정복 RPG</div>
+        <h1>UNI-VERSE</h1>
+      </header>
+      <div class="window" id="test-box"></div>
+      <button class="link" id="btn-pick">직업 직접 고르기</button>
+      <div class="window hidden" id="pick-box"></div>
+    </section>
+
+    <!-- Class reveal -->
+    <section id="screen-reveal" class="screen hidden">
+      <div class="window center">
+        <div class="small">당신의 유니는…</div>
+        <div class="sprite-frame big"><img id="reveal-img" alt=""></div>
+        <h2 id="reveal-name"></h2>
+        <div class="small" id="reveal-role"></div>
+        <div class="skill-box" id="reveal-skill"></div>
+        <button class="btn primary" id="btn-start">모험 시작 ▶</button>
+      </div>
+    </section>
+
+    <!-- Main game -->
+    <section id="screen-game" class="screen hidden">
+      <div class="window hero">
+        <div class="sprite-frame"><img id="hero-img" alt=""></div>
+        <div class="hero-info">
+          <div class="hero-name" id="hero-name"></div>
+          <div class="row"><span class="lv" id="hero-lv"></span><span class="gold" id="hero-gold"></span></div>
+          <div class="bar"><div class="bar-fill" id="exp-fill"></div><span id="exp-text"></span></div>
+          <div class="skill-chip" id="skill-chip"></div>
+        </div>
+      </div>
+
+      <div class="window study">
+        <div class="row">
+          <span>📖 공부 중… <b id="study-time">00:00</b></span>
+          <span class="combo" id="combo">집중 콤보 x0</span>
+        </div>
+        <div class="row small">
+          <span id="rate-exp"></span><span id="rate-gold"></span>
+        </div>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="equip">장비</button>
+        <button class="tab" data-tab="quest">퀘스트</button>
+        <button class="tab" data-tab="me">정보</button>
+      </nav>
+
+      <div class="window panel" id="tab-equip"></div>
+      <div class="window panel hidden" id="tab-quest"></div>
+      <div class="window panel hidden" id="tab-me"></div>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+    <div id="modal" class="modal hidden"><div class="window center" id="modal-box"></div></div>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="logic.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
