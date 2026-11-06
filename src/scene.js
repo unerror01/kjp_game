@@ -87,7 +87,19 @@
     const projectiles = [];     // { fx, x0, y0, t, dur, dmg } flying nuke skills
     const bursts = [];          // { fx, x, y, life, max, size, ring } hit effects
     const floats = [];
-    let heroHp = null, down = 0, mobAtkT = 0, banner = null, shakeT = 0;
+    let heroHp = null, down = 0, mobAtkT = 0, banner = null, shakeT = 0, flashT = 0, petSprite = null;
+    const particles = [];       // { x, y, vx, vy, life, max, color, size, shape }
+
+    /** Class-themed particle spray at (x, y). */
+    function spray(x, y, n, speed, sizeMul) {
+      const th = opts.classFx();
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.8);
+        const life = 0.35 + Math.random() * 0.4;
+        particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.3, life, max: life,
+          color: th.colors[i % th.colors.length], size: (3 + Math.random() * 4) * (sizeMul || 1), shape: th.shape });
+      }
+    }
 
     function resize() {
       dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -289,6 +301,7 @@
         hitT += dt * (haste > 0 ? hasteMult : 1);
         if (hitT >= D.hitInterval) {
           hitT = 0; lunge = 0.14;
+          if (mob) { const c = mobCenter(); spray(c.x - mob.size * 0.2, c.y, 16, 170, 1.4); burst("", c.x - mob.size * 0.2, c.y, 26, true); }
           damage(opts.heroAtk() * (0.9 + Math.random() * 0.2), false);
         }
         // mob hits back
@@ -315,9 +328,14 @@
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
         p.t += dt;
+        { const k = Math.min(1, p.t / p.dur); spray(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * 30, 5, 50, 1.3); }
         if (p.t >= p.dur) {
           projectiles.splice(i, 1);
-          if (mob && mob.dying <= 0) { const c = mobCenter(); burst(p.fx, c.x, c.y, 64, true); shakeT = 0.15; }
+          if (mob && mob.dying <= 0) {
+            const c = mobCenter();
+            burst(p.fx, c.x, c.y, 96, true); spray(c.x, c.y, 70, 300, 2);
+            shakeT = 0.25; flashT = 0.12;
+          }
           damage(p.dmg, true);
         }
       }
@@ -328,7 +346,8 @@
       for (const h of ready) {
         if (mob && mob.dying <= 0) {
           const c = mobCenter();
-          burst(h.fx, c.x + (Math.random() - 0.5) * mob.size * 0.6, c.y + (Math.random() - 0.5) * mob.size * 0.5, 30, false);
+          const bx = c.x + (Math.random() - 0.5) * mob.size * 0.6, by = c.y + (Math.random() - 0.5) * mob.size * 0.5;
+          burst(h.fx, bx, by, 44, false); spray(bx, by, 22, 200, 1.6); shakeT = Math.max(shakeT, 0.06);
         }
         damage(h.dmg, true);
       }
@@ -342,6 +361,7 @@
       if (mob) { mob.flash = Math.max(0, mob.flash - dt); mob.lunge = Math.max(0, (mob.lunge || 0) - dt); }
       lunge = Math.max(0, lunge - dt);
       shakeT = Math.max(0, shakeT - dt);
+      flashT = Math.max(0, flashT - dt);
 
       // draw
       const sx = shakeT > 0 ? (Math.random() - 0.5) * 8 : 0, sy = shakeT > 0 ? (Math.random() - 0.5) * 6 : 0;
@@ -355,6 +375,11 @@
       const bob = walking ? Math.abs(Math.sin(t * 9)) * 5 : 0;
       const hx = D.heroX + (lunge > 0 ? 12 : 0);
       const hs = D.heroSize;
+      if (petSprite) {
+        const px = hx - 30, py = H - 34 - hs * 0.9 + Math.sin(t * 3) * 6;
+        drawSprite(petSprite, px, py, 46, down > 0 ? 0.4 : 1, 0);
+        if (Math.random() < dt * 4) particles.push({ x: px + 23 + (Math.random() - 0.5) * 30, y: py + 10, vx: 0, vy: -20, life: 0.6, max: 0.6, color: '#ffe68a', size: 3, shape: 'star' });
+      }
       shadow(hx + hs / 2, hs * 0.6);
       const hf = heroFrames.length ? heroFrames[Math.floor(t * 6) % heroFrames.length] : null;
       if (haste > 0) {
@@ -374,8 +399,17 @@
         ctx.fillStyle = '#fff'; ctx.fillText('HP ' + fmtN(heroHp) + '/' + fmtN(maxHp), bx + bw / 2, by - 3);
       }
       if (fighting && lunge > 0) {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(hx + hs - 4, H - 34 - hs / 2, 18, -0.9, 0.9); ctx.stroke();
+        const th = opts.classFx(), cx = hx + hs - 2, cy = H - 34 - hs / 2;
+        ctx.lineWidth = 5; ctx.strokeStyle = th.colors[0];
+        if (th.swing === 'x') {
+          ctx.beginPath(); ctx.moveTo(cx - 6, cy - 22); ctx.lineTo(cx + 26, cy + 18); ctx.moveTo(cx + 26, cy - 22); ctx.lineTo(cx - 6, cy + 18); ctx.stroke();
+        } else if (th.swing === 'line') {
+          ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 46, cy); ctx.stroke();
+          ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx + 36, cy - 6); ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.arc(cx, cy, 24, -1.1, 1.1); ctx.stroke();
+          ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, 18, -0.9, 0.9); ctx.stroke();
+        }
       }
 
       if (mob) {
@@ -434,6 +468,23 @@
         ctx.fillText(b.fx, b.x, b.y + b.size * 0.25);
         ctx.globalAlpha = 1;
       }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const q = particles[i];
+        q.life -= dt;
+        if (q.life <= 0) { particles.splice(i, 1); continue; }
+        q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 300 * dt; q.vx *= 0.96;
+        ctx.globalAlpha = Math.min(1, q.life / q.max * 1.5);
+        ctx.fillStyle = q.color;
+        const z = q.size;
+        if (q.shape === 'star') { ctx.fillRect(q.x - z / 2, q.y - z / 6, z, z / 3); ctx.fillRect(q.x - z / 6, q.y - z / 2, z / 3, z); }
+        else if (q.shape === 'ring') { ctx.strokeStyle = q.color; ctx.lineWidth = 2; ctx.strokeRect(q.x - z / 2, q.y - z / 2, z, z); }
+        else if (q.shape === 'drop') { ctx.beginPath(); ctx.arc(q.x, q.y, z / 2, 0, Math.PI * 2); ctx.fill(); }
+        else ctx.fillRect(q.x - z / 2, q.y - z / 2, z, z);
+      }
+      ctx.globalAlpha = 1;
+      if (particles.length > 400) particles.splice(0, particles.length - 400);
+      if (flashT > 0) { ctx.fillStyle = 'rgba(255,255,255,' + (flashT / 0.12 * 0.45) + ')'; ctx.fillRect(-10, -10, W + 20, H + 20); }
 
       // skill bar (bottom right, over the path)
       const sk = opts.skills();
@@ -525,6 +576,8 @@
       stop() { cancelAnimationFrame(raf); raf = 0; },
       /** Drop the current mob (e.g. after a reset). */
       reset() { mob = null; gap = 60; clearAttacks(); for (const k in cooldowns) delete cooldowns[k]; haste = 0; heroHp = null; down = 0; banner = null; },
+      /** Pet that follows the hero (URL or null). */
+      setPet(url) { petSprite = null; if (url) loadSprite(url, 128).then(sp => { petSprite = sp; }); },
       /** Player pressed "보스 도전": drop the current mob so the boss spawns next. */
       challenge() { if (mob && !mob.boss && mob.dying <= 0) { mob = null; clearAttacks(); } gap = 10; },
       /** True while a boss is on screen and alive. */

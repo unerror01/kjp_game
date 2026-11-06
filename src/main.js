@@ -146,7 +146,13 @@
   function renderQuests() {
     const now = Date.now();
     const sorted = state.quests.slice().sort((a, b) => a.due - b.due);
-    $('tab-quest').innerHTML = '<div class="small">LMS 연동 데모 · 샘플 과제 (실제 과목·과제·마감은 그대로, 설정만 덧붙임)</div>' +
+    const src = state.questSource === 'lms' ? 'LMS에서 가져온 과제' : '샘플 과제 (LMS 파일을 불러오면 교체돼요)';
+    $('tab-quest').innerHTML =
+      '<div class="lms-box"><div class="small">① 버튼으로 LMS 캘린더 내보내기 페이지 열기 → ② .ics 파일 다운로드 → ③ 파일 불러오기</div>' +
+      '<div class="btns" style="margin-top:6px"><button class="btn small-btn" id="btn-lms-open">① LMS 열기</button>' +
+      '<label class="btn small-btn file-btn">③ .ics 파일 불러오기<input type="file" id="lms-file" accept=".ics,text/calendar"></label></div>' +
+      '<div class="small">파일은 이 브라우저 안에서만 읽어요. 서버로 보내지 않아요.</div></div>' +
+      '<div class="small">' + src + ' · 실제 과목·과제·마감은 그대로, 설정만 덧붙임</div>' +
       sorted.map(q => {
         const st = L.questStatus(q, now);
         const tag = { done: '클리어', failed: '실패', urgent: '마감 임박', open: '진행 중' }[st];
@@ -169,6 +175,78 @@
     };
   }
 
+  function wireLms() {
+    $('btn-lms-open').onclick = () => {
+      if (!D.lms.exportUrl) { toast('LMS 주소가 아직 설정되지 않았어요 (data.js의 lms.exportUrl)'); return; }
+      window.open(D.lms.exportUrl, '_blank', 'noopener');
+    };
+    $('lms-file').onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const items = L.parseIcs(String(reader.result || ''));
+        if (!items.length) { toast('과제를 찾지 못했어요. .ics 파일이 맞는지 확인해 주세요'); return; }
+        const n = L.importQuests(state, items, D);
+        save(); renderQuests(); wireLms();
+        toast('📥 과제 ' + n + '개를 퀘스트로 불러왔어요');
+      };
+      reader.onerror = () => toast('파일을 읽지 못했어요');
+      reader.readAsText(f);
+    };
+  }
+
+  function renderPets() {
+    if (!state) return;
+    const P = D.pets;
+    const owned = state.pets || {};
+    const statLabelP = (id) => P.stats.find(x => x.id === id).label;
+    const cards = P.grades.map(g => {
+      const pet = owned[g.id];
+      if (!pet) return '<div class="pet-card locked"><div class="pet-img">❔</div><div class="pet-grade">' + g.name + '</div><div class="small">' + g.min + '~' + g.max + '%</div></div>';
+      const eq = state.petEquipped === g.id;
+      const rr = L.petRerollCost(g.id, D);
+      return '<div class="pet-card' + (eq ? ' equipped' : '') + '" style="border-color:' + g.color + '">' +
+        '<div class="pet-img"><img src="' + P.spriteBase + g.sprite + '" alt=""></div>' +
+        '<div class="pet-grade" style="color:' + g.color + '">' + g.name + (eq ? ' ★' : '') + '</div>' +
+        pet.lines.map(l => '<div class="pet-line">' + esc(statLabelP(l.stat)) + ' +' + l.value + '%</div>').join('') +
+        '<div class="pet-btns">' + (eq ? '' : '<button class="btn small-btn" data-peq="' + g.id + '">장착</button>') +
+        '<button class="btn small-btn" data-prr="' + g.id + '" data-cost="' + rr + '"' + (state.gold < rr ? ' disabled' : '') + '>리롤 ' + fmt(rr) + 'G</button></div></div>';
+    }).join('');
+    const pb = L.petBonus(state, D);
+    $('tab-pet').innerHTML = '<div class="small">학점 펫 뽑기 · 등급이 높을수록 잠재능력 범위가 커요 · 장착한 펫이 전투에 함께해요</div>' +
+      '<div class="btns" style="margin:8px 0">' +
+      '<button class="btn small-btn" data-ppull="1" data-cost="' + P.pullCost + '"' + (state.gold < P.pullCost ? ' disabled' : '') + '>1회 ' + fmt(P.pullCost) + 'G</button>' +
+      '<button class="btn small-btn" data-ppull="10" data-cost="' + P.tenCost + '"' + (state.gold < P.tenCost ? ' disabled' : '') + '>10연차 ' + fmt(P.tenCost) + 'G</button></div>' +
+      '<div class="small">장착 효과: 공격력 ' + pct(pb.atk) + ' · HP ' + pct(pb.hp) + ' · EXP ' + pct(pb.exp) + ' · 골드 ' + pct(pb.gold) + '</div>' +
+      '<div class="pet-grid">' + cards + '</div>';
+    for (const b of $('tab-pet').querySelectorAll('[data-ppull]')) b.onclick = () => {
+      const n = +b.dataset.ppull;
+      const res = L.pullPets(state, D, n, n === 1 ? P.pullCost : P.tenCost, rng);
+      if (!res) return;
+      save(); updatePet();
+      const best = res.reduce((a, x) => P.grades.indexOf(x.grade) > P.grades.indexOf(a.grade) ? x : a);
+      if (['A0', 'Ap'].includes(best.grade.id) && !best.dup) toast('🌟 ' + best.grade.name + ' 펫 획득!!');
+      modal('<div>학점 펫 뽑기 결과</div><div class="relic-row" style="justify-content:center;margin:10px 0">' +
+        res.map(x => '<span class="relic owned' + (x.dup ? ' dup' : ' new') + '" style="border-color:' + x.grade.color + '"><img class="pet-mini" src="' + P.spriteBase + x.grade.sprite + '" alt=""><small style="color:' + x.grade.color + '">' +
+          x.grade.name + (x.dup ? '<br>+' + P.dupRefund + 'G' : '<br>NEW!') + '</small></span>').join('') + '</div>', renderAll);
+    };
+    for (const b of $('tab-pet').querySelectorAll('[data-peq]')) b.onclick = () => { L.equipPet(state, b.dataset.peq); save(); updatePet(); renderAll(); };
+    for (const b of $('tab-pet').querySelectorAll('[data-prr]')) b.onclick = () => {
+      if (L.rerollPet(state, b.dataset.prr, D, rng)) { save(); renderAll(); toast('펫 잠재능력 재설정!'); }
+    };
+  }
+
+  let petKey = null;
+  function updatePet() {
+    if (!scene) return;
+    const g = state.petEquipped && D.pets.grades.find(x => x.id === state.petEquipped);
+    const url = g ? D.pets.spriteBase + g.sprite : null;
+    if (url === petKey) return;
+    petKey = url;
+    scene.setPet(url);
+  }
+
   function renderMe() {
     const now = Date.now();
     const r = L.rates(state, D, now);
@@ -186,7 +264,10 @@
     $('tab-me').innerHTML = '<div class="row"><div class="sprite-frame mini"><img src="' + sprite(state.classId) + '" alt=""></div>' +
       '<div class="skill-box" style="flex:1;margin:0"><b>[' + esc(c.skill) + ']</b><br>' + esc(c.desc) + '</div></div>' +
       '<table class="stat-table">' + rows.map(x => '<tr><td>' + x[0] + '</td><td>' + esc(x[1]) + '</td></tr>').join('') + '</table>' +
-      '<button class="btn small-btn" id="btn-reset" style="margin-top:12px">처음부터 다시 (유니 테스트)</button>';
+      '<div class="btns" style="margin-top:12px;justify-content:space-between">' +
+      '<button class="btn small-btn" id="btn-testgold">🧪 테스트 골드 +' + fmt(D.debug.testGold) + 'G</button>' +
+      '<button class="btn small-btn" id="btn-reset">처음부터 다시 (유니 테스트)</button></div>';
+    $('btn-testgold').onclick = () => { state.gold += D.debug.testGold; save(); renderAll(); toast('🧪 테스트 골드 +' + fmt(D.debug.testGold) + 'G'); };
     $('btn-reset').onclick = () => { if (confirm('진행 상황이 모두 사라집니다. 다시 시작할까요?')) { wipe(); state = null; stop(); if (scene) scene.stop(); startTest(); } };
   }
 
@@ -220,7 +301,7 @@
     };
   }
 
-  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderRelics(); renderQuests(); renderMe(); }
+  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderRelics(); renderPets(); renderQuests(); wireLms(); renderMe(); }
 
   // ---------- clock ----------
   let sessionSec = 0;
@@ -245,7 +326,7 @@
         b.disabled = state.gold < cost;
       }
     }
-    for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
+    for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost], #tab-pet [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
     if (Math.floor(sessionSec) % 5 === 0) save();
     updateBossButton();
   }
@@ -318,6 +399,7 @@
       return Object.assign({ round, roundKills: state.roundKills || 0 }, L.roundInfo(round, D));
     },
     heroAtk: () => L.heroAtk(state, D),
+    classFx: () => D.classFx[state.classId],
     skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, fx: s.def.fx, type: s.def.type, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
     castSkill: (id) => {
       const def = D.skills.byClass[state.classId].find(s => s.id === id);
@@ -355,6 +437,8 @@
     bossChallenge = false;
     heroUrlKey = '';
     updateHeroSprite();
+    petKey = undefined;
+    updatePet();
     scene.start();
     renderAll();
     start();
@@ -385,7 +469,7 @@
   // tabs
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
     for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-    for (const p of ['equip', 'skill', 'relic', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
+    for (const p of ['equip', 'skill', 'relic', 'pet', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
     renderAll();
   };
   $('btn-pick').onclick = () => $('pick-box').classList.toggle('hidden');

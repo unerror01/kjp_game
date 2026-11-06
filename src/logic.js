@@ -188,8 +188,9 @@
     const lvl = (state.level - 1) * i.levelBonusPerLevel * rb.levelBonusMult;
     const combo = comboStacks(state, data) * i.comboBonusPerStack;
     const sk = skillModifiers(state, data, now);
-    const expMul = 1 + lvl + combo + sk.exp + rb.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
-    const goldMul = (1 + lvl + combo + sk.gold + rb.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
+    const pb = petBonus(state, data);
+    const expMul = 1 + lvl + combo + sk.exp + rb.exp + pb.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
+    const goldMul = (1 + lvl + combo + sk.gold + rb.gold + pb.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
     return { expPerSec: i.baseExpPerSec * expMul, goldPerSec: i.baseGoldPerSec * goldMul, expMul, goldMul, combo, skill: sk };
   }
 
@@ -346,7 +347,7 @@
   /** Hero auto-attack damage. */
   function heroAtk(state, data) {
     const c = data.combat;
-    return c.atkBase * (1 + c.atkPerLevel * (state.level - 1));
+    return c.atkBase * (1 + c.atkPerLevel * (state.level - 1)) * (1 + petBonus(state, data).atk);
   }
 
   /** { isBoss, count } for a round number (1-based). */
@@ -365,7 +366,7 @@
   /** Hero max HP. */
   function heroMaxHp(state, data) {
     const c = data.combat;
-    return Math.floor(c.heroHpBase * (1 + c.heroHpPerLevel * (state.level - 1)));
+    return Math.floor(c.heroHpBase * (1 + c.heroHpPerLevel * (state.level - 1)) * (1 + petBonus(state, data).hp));
   }
 
   /** Damage one mob attack deals in `round`. */
@@ -448,7 +449,139 @@
     return { mult: sk.def.mult, dur: sk.def.dur * (1 + 0.1 * (sk.level - 1)) };
   }
 
+  // ---------- 학점 펫 ----------
+
+  function petGrade(id, data) { return data.pets.grades.find(g => g.id === id); }
+
+  function rollPetLines(gradeId, data, rng) {
+    const g = petGrade(gradeId, data);
+    const stats = data.pets.stats;
+    return Array.from({ length: data.pets.lines }, () => ({
+      stat: stats[Math.floor(rng() * stats.length)].id,
+      value: g.min + Math.floor(rng() * (g.max - g.min + 1))
+    }));
+  }
+
+  /** Bonus fractions from the equipped pet: { atk, hp, exp, gold }. */
+  function petBonus(state, data) {
+    const b = { atk: 0, hp: 0, exp: 0, gold: 0 };
+    const pet = state.pets && state.petEquipped && state.pets[state.petEquipped];
+    if (pet) for (const l of pet.lines) b[l.stat] += l.value / 100;
+    return b;
+  }
+
+  /**
+   * Pulls `count` pets by grade weight. New grades are added with fresh lines;
+   * duplicates refund gold. The first pet ever is auto-equipped, and a pull that
+   * finds a higher grade than the equipped one does not change the equip.
+   * Returns [{ grade, dup }] or null when gold is short.
+   */
+  function pullPets(state, data, count, cost, rng) {
+    if (state.gold < cost) return null;
+    state.gold -= cost;
+    if (!state.pets) state.pets = {};
+    const grades = data.pets.grades;
+    const total = grades.reduce((a, g) => a + g.weight, 0);
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      let r = rng() * total, g = grades[grades.length - 1];
+      for (const x of grades) { if ((r -= x.weight) < 0) { g = x; break; } }
+      const dup = !!state.pets[g.id];
+      if (dup) state.gold += data.pets.dupRefund;
+      else state.pets[g.id] = { lines: rollPetLines(g.id, data, rng) };
+      out.push({ grade: g, dup });
+    }
+    if (!state.petEquipped) {
+      const best = out.filter(x => !x.dup).sort((a, b) => grades.indexOf(b.grade) - grades.indexOf(a.grade))[0];
+      state.petEquipped = best ? best.grade.id : null;
+    }
+    return out;
+  }
+
+  function petRerollCost(gradeId, data) {
+    const i = data.pets.grades.findIndex(g => g.id === gradeId);
+    return data.pets.rerollCostBase * (i + 1);
+  }
+
+  /** Rerolls an owned pet's lines within its grade range. Returns new lines or null. */
+  function rerollPet(state, gradeId, data, rng) {
+    if (!state.pets || !state.pets[gradeId]) return null;
+    const cost = petRerollCost(gradeId, data);
+    if (state.gold < cost) return null;
+    state.gold -= cost;
+    state.pets[gradeId].lines = rollPetLines(gradeId, data, rng);
+    return state.pets[gradeId].lines;
+  }
+
+  function equipPet(state, gradeId) {
+    if (state.pets && state.pets[gradeId]) state.petEquipped = gradeId;
+  }
+
+  // ---------- LMS .ics import ----------
+
+  /** Parses an iCalendar date (DATE or DATE-TIME, UTC or floating/local). Returns ms or NaN. */
+  function parseIcsDate(v) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(v.trim());
+    if (!m) return NaN;
+    const [, y, mo, d, h = '23', mi = '59', se = '00', z] = m;
+    return z ? Date.UTC(+y, +mo - 1, +d, +h, +mi, +se) : new Date(+y, +mo - 1, +d, +h, +mi, +se).getTime();
+  }
+
+  function icsUnescape(v) {
+    return v.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+  }
+
+  /**
+   * Extracts assignments from .ics text: [{ uid, subject, title, due }].
+   * subject = CATEGORIES (course), title = SUMMARY, due = DTEND (falls back to DTSTART).
+   * Real values are kept verbatim — only the dungeon/monster flavour is added later.
+   */
+  function parseIcs(text) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '').split('\n');
+    const out = [];
+    let ev = null;
+    for (const line of lines) {
+      if (line === 'BEGIN:VEVENT') { ev = {}; continue; }
+      if (line === 'END:VEVENT') {
+        if (ev && ev.summary) {
+          const due = parseIcsDate(ev.dtend || ev.dtstart || '');
+          if (!isNaN(due)) out.push({ uid: ev.uid || ev.summary + due, subject: ev.categories || '기타', title: ev.summary, due });
+        }
+        ev = null; continue;
+      }
+      if (!ev) continue;
+      const i = line.indexOf(':');
+      if (i < 0) continue;
+      const key = line.slice(0, i).split(';')[0].toUpperCase();
+      const val = icsUnescape(line.slice(i + 1));
+      if (key === 'SUMMARY') ev.summary = val;
+      else if (key === 'CATEGORIES') ev.categories = val.split(',')[0].trim();
+      else if (key === 'DTEND') ev.dtend = val;
+      else if (key === 'DTSTART') ev.dtstart = val;
+      else if (key === 'UID') ev.uid = val;
+    }
+    return out;
+  }
+
+  /**
+   * Replaces the quest list with imported assignments, keeping 'done' for UIDs
+   * already cleared. Returns the number of quests.
+   */
+  function importQuests(state, items, data) {
+    const q = data.quests;
+    const doneUids = new Set((state.quests || []).filter(x => x.done && x.uid).map(x => x.uid));
+    state.quests = items.map((a, i) => ({
+      id: i, uid: a.uid, subject: a.subject, title: a.title, due: a.due,
+      done: doneUids.has(a.uid),
+      dungeon: a.subject + q.dungeons[i % q.dungeons.length],
+      monster: q.monsters[i % q.monsters.length]
+    }));
+    state.questSource = 'lms';
+    return state.quests.length;
+  }
+
   const api = {
+    petBonus, pullPets, petRerollCost, rerollPet, equipPet, parseIcs, parseIcsDate, importQuests,
     heroMaxHp, mobAtk, atBossGate, heroDown,
     relicCount, relicBonus, pullRelics, offlineEfficiency,
     heroAtk, roundInfo, mobHp, recordKill, failBoss, classSkills, skillUpgradeCost, upgradeSkill,

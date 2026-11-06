@@ -134,6 +134,64 @@ window.GAME_DATA = {
     ]
   },
 
+  /**
+   * 학점 펫 gacha. Grade sets the floor/ceiling of each potential line (%).
+   * One pet per grade; a duplicate grade refunds gold. The equipped pet follows
+   * the hero in battle. Stats: atk/hp feed combat, exp/gold feed idle rates.
+   */
+  pets: {
+    spriteBase: '../assets/sprites/pets/',
+    pullCost: 500,
+    tenCost: 4500,
+    dupRefund: 100,
+    lines: 2,
+    rerollCostBase: 200,          // × grade index + 1
+    stats: [
+      { id: 'atk',  label: '공격력' },
+      { id: 'hp',   label: '최대 HP' },
+      { id: 'exp',  label: '경험치 획득량' },
+      { id: 'gold', label: '골드 획득량' }
+    ],
+    grades: [
+      { id: 'F',  name: 'F',  sprite: 'F.png',  weight: 25, min: 1,  max: 5,  color: '#9aa6d8' },
+      { id: 'D0', name: 'D0', sprite: 'D0.png', weight: 20, min: 3,  max: 8,  color: '#9aa6d8' },
+      { id: 'Dp', name: 'D+', sprite: 'Dp.png', weight: 16, min: 5,  max: 12, color: '#5ab4ff' },
+      { id: 'C0', name: 'C0', sprite: 'C0.png', weight: 13, min: 8,  max: 16, color: '#5ab4ff' },
+      { id: 'Cp', name: 'C+', sprite: 'Cp.png', weight: 10, min: 12, max: 22, color: '#b57bff' },
+      { id: 'B0', name: 'B0', sprite: 'B0.png', weight: 7,  min: 16, max: 28, color: '#b57bff' },
+      { id: 'Bp', name: 'B+', sprite: 'Bp.png', weight: 5,  min: 22, max: 36, color: '#ffcc33' },
+      { id: 'A0', name: 'A0', sprite: 'A0.png', weight: 3,  min: 30, max: 50, color: '#ffcc33' },
+      { id: 'Ap', name: 'A+', sprite: 'Ap.png', weight: 1,  min: 50, max: 75, color: '#6dff8a' }
+    ]
+  },
+
+  /**
+   * Per-class battle effect theme: particle colours and the shape of the basic
+   * attack swing. shape: 'square' | 'star' | 'ring' | 'drop'; swing: 'arc' | 'x' | 'line'.
+   */
+  classFx: {
+    insider:   { colors: ['#4aa8ff', '#ffffff', '#ffd84a'], shape: 'star',   swing: 'arc'  },
+    hermit:    { colors: ['#7b4bff', '#2a1a5e', '#c6b3ff'], shape: 'square', swing: 'x'    },
+    berserker: { colors: ['#ff3a1a', '#ff9a3c', '#ffe14a'], shape: 'square', swing: 'arc'  },
+    planner:   { colors: ['#3ee07a', '#ffffff', '#1f8a55'], shape: 'ring',   swing: 'line' },
+    foodie:    { colors: ['#ffb347', '#fff3d6', '#ff7a3c'], shape: 'drop',   swing: 'arc'  },
+    rogue:     { colors: ['#5af0ff', '#ffffff', '#3a7bff'], shape: 'star',   swing: 'line' }
+  },
+
+  /**
+   * LMS import: the button opens the LMS calendar export page; the player
+   * downloads the .ics file and uploads it here. Parsed in the browser only —
+   * nothing is sent to a server. Set exportUrl to the real 코스모스 export page.
+   */
+  lms: {
+    exportUrl: '',
+    rewardGold: 400,
+    rewardExp: 120
+  },
+
+  /** Demo/testing helpers shown in the 정보 tab. */
+  debug: { testGold: 10000 },
+
   /** Idle farming (MVP 2). Rates are per second at level 1 with no bonuses. */
   idle: {
     baseExpPerSec: 1,
