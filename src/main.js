@@ -35,7 +35,19 @@
   }
   function sprite(classId) { return D.spriteBase + D.classes[classId].sprite; }
   let toastT = null;
+  /** Appends a line to the 전투 기록 panel (newest first, capped). */
+  function logBattle(msg) {
+    const box = $('battle-log');
+    if (!box) return;
+    const cls = /패배|실패|탈환당|기절|초기화/.test(msg) ? 'bad' : /레벨 업|점령|처치|획득|NEW/.test(msg) ? 'good' : /G\b|골드/.test(msg) ? 'gold' : '';
+    const d = document.createElement('div');
+    d.className = 'log-line ' + cls;
+    d.textContent = msg;
+    box.prepend(d);
+    while (box.children.length > 40) box.lastChild.remove();
+  }
   function toast(msg) {
+    logBattle(msg);
     const t = $('toast');
     t.textContent = msg; t.classList.remove('hidden');
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 2200);
@@ -98,6 +110,9 @@
     $('hero-name').textContent = c.name;
     $('hero-lv').textContent = 'Lv.' + state.level;
     $('hero-gold').textContent = '💰 ' + fmt(state.gold) + ' G';
+    $('hero-cp').textContent = fmt(L.combatPower(state, D));
+    const av = D.spriteBase + c.sprite;
+    if ($('hero-avatar').getAttribute('src') !== av) $('hero-avatar').src = av;
     const need = L.expToNext(state.level, D);
     $('exp-fill').style.width = Math.min(100, state.exp / need * 100) + '%';
     $('exp-text').textContent = 'EXP ' + fmt(state.exp) + ' / ' + fmt(need);
@@ -151,7 +166,12 @@
       '<div class="lms-box"><div class="small">① 버튼으로 LMS 캘린더 내보내기 페이지 열기 → ② .ics 파일 다운로드 → ③ 파일 불러오기</div>' +
       '<div class="btns" style="margin-top:6px"><button class="btn small-btn" id="btn-lms-open">① LMS 열기</button>' +
       '<label class="btn small-btn file-btn">③ .ics 파일 불러오기<input type="file" id="lms-file" accept=".ics,text/calendar"></label></div>' +
-      '<div class="small">파일은 이 브라우저 안에서만 읽어요. 서버로 보내지 않아요.</div></div>' +
+      '<div class="small">파일은 이 브라우저 안에서만 읽어요.</div>' +
+      '<div class="small" style="margin-top:8px">🔄 자동 동기화: LMS 내보내기 화면의 <b>「캘린더 URL 얻기」</b> 주소를 붙여넣으면 ' + D.lms.syncMinutes + '분마다 자동 갱신돼요. (주소는 이 기기에만 저장)</div>' +
+      '<div class="lms-sub"><input id="lms-url" type="url" placeholder="https://lms.inu.ac.kr/calendar/export_execute.php?..." value="' + esc(lmsUrl()) + '">' +
+      '<button class="btn small-btn" id="btn-lms-save">' + (lmsUrl() ? '저장·동기화' : '연결') + '</button>' +
+      (lmsUrl() ? '<button class="btn small-btn" id="btn-lms-clear">해제</button>' : '') + '</div>' +
+      (state.lmsSyncedAt ? '<div class="small">마지막 동기화: ' + new Date(state.lmsSyncedAt).toLocaleString('ko-KR') + '</div>' : '') + '</div>' +
       '<div class="small">' + src + ' · 실제 과목·과제·마감은 그대로, 설정만 덧붙임</div>' +
       sorted.map(q => {
         const st = L.questStatus(q, now);
@@ -176,6 +196,14 @@
   }
 
   function wireLms() {
+    $('btn-lms-save').onclick = () => {
+      const u = $('lms-url').value.trim();
+      let ok = false;
+      try { const x = new URL(u); ok = x.protocol === 'https:' && x.hostname === D.lms.allowedHost; } catch (e) { ok = false; }
+      if (!ok) { toast(D.lms.allowedHost + ' 주소만 연결할 수 있어요'); return; }
+      setLmsUrl(u); syncLms(true);
+    };
+    if ($('btn-lms-clear')) $('btn-lms-clear').onclick = () => { setLmsUrl(''); renderQuests(); wireLms(); toast('LMS 자동 동기화 해제'); };
     $('btn-lms-open').onclick = () => {
       if (!D.lms.exportUrl) { toast('LMS 주소가 아직 설정되지 않았어요 (data.js의 lms.exportUrl)'); return; }
       window.open(D.lms.exportUrl, '_blank', 'noopener');
@@ -301,7 +329,120 @@
     };
   }
 
-  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderRelics(); renderPets(); renderQuests(); wireLms(); renderMe(); }
+  function renderGuild() {
+    if (!state) return;
+    const T = D.territory;
+    const t = state.territory;
+    if (!t) {
+      $('tab-guild').innerHTML = '<div class="small">길드 점령전 · 내 학과를 선택하면 캠퍼스 건물 쟁탈전에 참가해요 (한 번 고르면 처음부터 다시 하기 전까지 유지)</div>' +
+        T.colleges.map(c => '<div class="college"><div class="college-name" style="color:' + c.color + '">' + esc(c.name) + '</div><div class="dept-list">' +
+          c.depts.map(n => '<button class="btn small-btn dept-btn" data-dept="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div></div>').join('');
+      for (const b of $('tab-guild').querySelectorAll('[data-dept]')) b.onclick = () => {
+        if (!confirm(b.dataset.dept + '(으)로 참가할까요?')) return;
+        L.joinDept(state, b.dataset.dept, D, Date.now()); save(); renderGuild(); toast('🚩 ' + b.dataset.dept + ' 길드 참가!');
+      };
+      return;
+    }
+    const depts = L.deptList(D);
+    const me = depts.find(d => d.id === t.dept);
+    const tb = L.territoryBonus(state, D);
+    const rank = L.deptRanking(state, D);
+    const tiles = T.buildings.map(bd => {
+      const owner = depts.find(d => d.id === t.owners[bd.id]);
+      const mine = t.owners[bd.id] === t.dept;
+      const fl = t.fortify[bd.id] || 0;
+      const rec = bd.tier * T.recLevelPerTier;
+      let btn;
+      if (mine) {
+        const cost = L.fortifyCost(fl, D);
+        btn = fl >= T.fortifyMax ? '<div class="small">방어 최대</div>' :
+          '<button class="btn small-btn" data-fort="' + bd.id + '" data-cost="' + cost + '"' + (state.gold < cost ? ' disabled' : '') + '>방어 강화 ' + fmt(cost) + 'G</button>';
+      } else {
+        btn = '<button class="btn small-btn' + (state.level >= rec ? '' : ' warn') + '" data-siege="' + bd.id + '"' + (siegeTarget ? ' disabled' : '') + '>⚔ 공격 (권장 Lv.' + rec + ')</button>';
+      }
+      return '<div class="bld' + (mine ? ' mine' : '') + '" style="border-color:' + owner.color + '">' +
+        '<div class="bld-head"><b>' + esc(bd.name) + '</b><span class="small">' + '★'.repeat(Math.min(5, Math.ceil(bd.tier / 2))) + '</span></div>' +
+        '<div class="bld-owner" style="color:' + owner.color + '">' + (mine ? '🚩 ' : '') + esc(owner.name) + '</div>' +
+        '<div class="small">' + esc(bd.buff.label) + (mine ? ' · 방어 Lv.' + fl + ' (탈환 ' + Math.round(L.retakeChance(state, bd.id, D) * 100) + '%)' : '') + '</div>' + btn + '</div>';
+    }).join('');
+    $('tab-guild').innerHTML =
+      '<div class="row"><span>🚩 <b style="color:' + me.color + '">' + esc(me.name) + '</b></span><span class="small">' + esc(me.college) + '</span></div>' +
+      '<div class="small">점령 효과: 골드 ' + pct(tb.gold) + ' · EXP ' + pct(tb.exp) + ' · 공격력 ' + pct(tb.atk) + ' · HP ' + pct(tb.hp) + '</div>' +
+      '<div class="small">다른 학과가 ' + T.counterIntervalMin + '분마다 탈환을 시도해요. 방어 강화로 확률을 낮추세요.</div>' +
+      '<div class="rank">' + rank.map((r, i) => '<span class="rank-chip' + (r.dept.id === t.dept ? ' me' : '') + '" style="border-color:' + r.dept.color + '">' + (i + 1) + '. ' + esc(r.dept.name) + ' ' + r.count + '</span>').join('') + '</div>' +
+      '<div class="bld-grid">' + tiles + '</div>' +
+      '<div class="small" style="margin-top:8px">전황</div><div class="lines">' +
+      (t.log.length ? t.log.map(l => '<div class="line"><span>' + esc(l.text) + '</span></div>').join('') : '<div class="line"><span>아직 전투 기록이 없어요</span></div>') + '</div>';
+    for (const b of $('tab-guild').querySelectorAll('[data-siege]')) b.onclick = () => {
+      if (!scene || scene.isDown()) { toast('기절 중에는 공격할 수 없어요'); return; }
+      if (scene.isBossActive()) { toast('보스전 중에는 공격할 수 없어요'); return; }
+      siegeTarget = b.dataset.siege;
+      bossChallenge = false;
+      scene.challenge();
+      renderGuild(); updateBossButton();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    for (const b of $('tab-guild').querySelectorAll('[data-fort]')) b.onclick = () => {
+      if (L.fortify(state, b.dataset.fort, D)) { save(); renderAll(); toast('🛡 방어 강화!'); }
+    };
+  }
+
+  /** AI 학과 counterattacks for elapsed intervals. */
+  function runCounter() {
+    if (!state || !state.territory) return;
+    const lost = L.simulateCounter(state, D, Date.now(), rng);
+    if (lost.length) {
+      save(); renderAll();
+      toast('🛡 ' + lost.map(x => x.building.name).join(', ') + ' 탈환당함!');
+    }
+  }
+
+  function renderGrow() {
+    if (!state) return;
+    const crit = L.heroCrit(state, D);
+    $('tab-grow').innerHTML = '<div class="small">골드로 스탯을 올려요 · 전투력 <b style="color:#ff9a3c">' + fmt(L.combatPower(state, D)) + '</b></div>' +
+      '<div class="small">공격력 ' + fmt(L.heroAtk(state, D)) + ' · HP ' + fmt(L.heroMaxHp(state, D)) + ' · 치명타 ' + Math.round(crit.rate * 100) + '% / x' + crit.mult.toFixed(2) +
+      ' · 공속 x' + L.heroAspd(state, D).toFixed(2) + '</div>' +
+      D.stats.list.map(st => {
+        const lv = L.statLevel(state, st.id);
+        const maxed = lv >= st.max;
+        const cost = L.statCost(state, st.id, D);
+        const val = Math.round(st.per * lv * 1000) / 10;
+        return '<div class="stat-row"><span class="stat-icon">' + st.icon + '</span><div class="stat-main"><div>' + st.name + ' <b>Lv.' + lv + '</b></div>' +
+          '<div class="small">+' + val + '% (레벨당 +' + Math.round(st.per * 1000) / 10 + '%, 최대 Lv.' + st.max + ')</div></div>' +
+          (maxed ? '<span class="small">MAX</span>' :
+            '<button class="btn small-btn" data-stat="' + st.id + '" data-cost="' + cost + '"' + (state.gold < cost ? ' disabled' : '') + '>강화 ' + fmt(cost) + 'G</button>') +
+          '</div>';
+      }).join('');
+    for (const b of $('tab-grow').querySelectorAll('[data-stat]')) b.onclick = () => {
+      if (L.upgradeStat(state, b.dataset.stat, D)) { save(); renderHero(); renderGrow(); }
+    };
+  }
+
+  // ---------- LMS hourly sync (subscription URL, fetched through /api/ics) ----------
+  const LMS_KEY = 'universe-lms-url';
+  function lmsUrl() { try { return localStorage.getItem(LMS_KEY) || ''; } catch (e) { return ''; } }
+  function setLmsUrl(u) { try { if (u) localStorage.setItem(LMS_KEY, u); else localStorage.removeItem(LMS_KEY); } catch (e) { /* ignore */ } }
+  /** Pulls the subscription .ics via the serverless proxy and imports it. */
+  async function syncLms(manual) {
+    const u = lmsUrl();
+    if (!u || !state) return;
+    try {
+      const res = await fetch(D.lms.proxy + '?url=' + encodeURIComponent(u));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const items = L.parseIcs(await res.text());
+      if (!items.length) throw new Error('과제 없음');
+      const n = L.importQuests(state, items, D);
+      state.lmsSyncedAt = Date.now();
+      save(); renderQuests(); wireLms();
+      if (manual) toast('🔄 LMS 동기화 완료 · 과제 ' + n + '개');
+    } catch (e) {
+      if (manual) toast('LMS 동기화 실패: ' + e.message);
+    }
+  }
+  setInterval(() => syncLms(false), D.lms.syncMinutes * 60000);
+
+  function renderAll() { renderHero(); renderEquip(); renderSkills(); renderRelics(); renderPets(); renderGuild(); renderGrow(); renderQuests(); wireLms(); renderMe(); }
 
   // ---------- clock ----------
   let sessionSec = 0;
@@ -326,14 +467,15 @@
         b.disabled = state.gold < cost;
       }
     }
-    for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost], #tab-pet [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
+    for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost], #tab-pet [data-cost], #tab-guild [data-cost], #tab-grow [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
     if (Math.floor(sessionSec) % 5 === 0) save();
+    if (Math.floor(sessionSec) % 30 === 0) runCounter();
     updateBossButton();
   }
 
   /** "보스 도전" shows only at a boss gate when no boss fight is running. */
   function updateBossButton() {
-    const show = state && scene && L.atBossGate(state, D) && !bossChallenge && !scene.isBossActive();
+    const show = state && scene && L.atBossGate(state, D) && !bossChallenge && !siegeTarget && !scene.isBossActive();
     $('btn-boss').classList.toggle('hidden', !show);
   }
   $('btn-boss').onclick = () => {
@@ -352,6 +494,16 @@
   let scene = null;
   /** Scene callback: a mob died, pay the banked study gains and advance the round. */
   function onKill(mob) {
+    if (mob.siege) {
+      const r = L.payout(state, D, D.territory.captureRewardMult);
+      L.captureBuilding(state, mob.siege, D, Date.now());
+      const bd = D.territory.buildings.find(b => b.id === mob.siege);
+      siegeTarget = null;
+      toast('🚩 ' + bd.name + ' 점령! ' + bd.buff.label);
+      if (r.levels) { toast('🎉 레벨 업! Lv.' + state.level); renderSkills(); updateHeroSprite(); }
+      save(); renderAll();
+      return Object.assign(r, { roundCleared: false });
+    }
     const bossMult = D.battle.bossMult * (1 + L.relicBonus(state, D).bossReward);
     const r = L.payout(state, D, mob.boss ? bossMult : 1);
     const k = L.recordKill(state, D, mob.boss);
@@ -379,13 +531,26 @@
   }
 
   let bossChallenge = false;
+  let siegeTarget = null;   // building id while a siege is queued or running
   const sceneOpts = {
     data: D,
     onKill,
-    onBossFail: () => { bossChallenge = false; L.failBoss(state); save(); toast('보스에게 패배… 강화하고 다시 도전!'); },
+    onBossFail: (mob) => {
+      if (mob && mob.siege) { siegeTarget = null; toast('점령 실패… 강화하고 다시 도전!'); renderGuild(); return; }
+      bossChallenge = false; L.failBoss(state); save(); toast('보스에게 패배… 강화하고 다시 도전!');
+    },
     onHeroDown: () => { L.heroDown(state); save(); toast('기절… 라운드 진행이 초기화됐어요'); },
     heroMaxHp: () => L.heroMaxHp(state, D),
     nextMob: () => {
+      if (siegeTarget && state.territory) {
+        const T = D.territory;
+        const bd = T.buildings.find(b => b.id === siegeTarget);
+        const owner = L.deptList(D).find(d => d.id === state.territory.owners[bd.id]);
+        const boss = D.battle.bosses[(bd.tier - 1) % D.battle.bosses.length];
+        return { def: { name: owner.name + ' 수비대장', sprite: boss.sprite, siege: bd.id }, boss: true, siege: bd.id,
+          hp: L.siegeHp(bd.tier, D), atk: L.siegeAtk(bd.tier, D), timeLimit: T.siegeTimeLimit,
+          bannerTitle: '⚔ ' + bd.name + ' 점령전 ⚔' };
+      }
       const round = state.round || 1;
       const info = L.roundInfo(round, D);
       const boss = info.isBoss && bossChallenge;
@@ -396,11 +561,14 @@
     },
     getRound: () => {
       const round = state.round || 1;
-      return Object.assign({ round, roundKills: state.roundKills || 0 }, L.roundInfo(round, D));
+      const siege = siegeTarget ? D.territory.buildings.find(b => b.id === siegeTarget).name + ' 진격 중' : null;
+      return Object.assign({ round, roundKills: state.roundKills || 0, siege }, L.roundInfo(round, D));
     },
     heroAtk: () => L.heroAtk(state, D),
     classFx: () => D.classFx[state.classId],
-    skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, fx: s.def.fx, type: s.def.type, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
+    heroCrit: () => L.heroCrit(state, D),
+    heroAspd: () => L.heroAspd(state, D),
+    skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, fx: s.def.fx, type: s.def.type, anim: s.def.anim, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
     castSkill: (id) => {
       const def = D.skills.byClass[state.classId].find(s => s.id === id);
       const dmg = L.skillHitDamage(state, id, D);
@@ -469,7 +637,7 @@
   // tabs
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
     for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-    for (const p of ['equip', 'skill', 'relic', 'pet', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
+    for (const p of ['grow', 'equip', 'skill', 'relic', 'pet', 'guild', 'quest', 'me']) $('tab-' + p).classList.toggle('hidden', p !== t.dataset.tab);
     renderAll();
   };
   $('btn-pick').onclick = () => $('pick-box').classList.toggle('hidden');
@@ -487,6 +655,8 @@
     state.shieldsLeft = D.classes[state.classId].shields || 0;
     save();
     enterGame(off);
+    runCounter();
+    syncLms(false);
   } else {
     startTest();
   }

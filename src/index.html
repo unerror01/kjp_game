@@ -34,44 +34,56 @@
     </section>
 
     <!-- Main game -->
-    <section id="screen-game" class="screen hidden">
-      <div class="window scene-win"><canvas id="scene"></canvas>
-        <button id="btn-boss" class="boss-btn hidden">👑 보스 도전!</button></div>
-      <div class="window hero">
-        <img id="hero-img" alt="" class="hidden">
+    <section id="screen-game" class="screen hidden game">
+      <div class="window topbar">
+        <div class="brand"><b>UNI-VERSE</b><span>인천대 정복 RPG</span></div>
+        <div class="sprite-frame mini avatar"><img id="hero-avatar" alt=""></div>
         <div class="hero-info">
-          <div class="hero-name" id="hero-name"></div>
-          <div class="row"><span class="lv" id="hero-lv"></span><span class="gold" id="hero-gold"></span></div>
+          <div class="row"><span class="hero-name"><span class="lv" id="hero-lv"></span> <span id="hero-name"></span></span>
+            <span class="top-stats"><span class="gold" id="hero-gold"></span><span class="cp">전투력 <b id="hero-cp"></b></span></span></div>
           <div class="bar"><div class="bar-fill" id="exp-fill"></div><span id="exp-text"></span></div>
           <div class="skill-chip" id="skill-chip"></div>
         </div>
+        <img id="hero-img" alt="" class="hidden">
       </div>
 
-      <div class="window study">
-        <div class="row">
-          <span>📖 공부 중… <b id="study-time">00:00</b></span>
-          <span class="combo" id="combo">집중 콤보 x0</span>
+      <div class="col-left">
+        <div class="window scene-win"><canvas id="scene"></canvas>
+          <button id="btn-boss" class="boss-btn hidden">👑 보스 도전!</button></div>
+
+        <div class="window study">
+          <div class="row">
+            <span>📖 공부 중… <b id="study-time">00:00</b></span>
+            <span class="combo" id="combo">집중 콤보 x0</span>
+          </div>
+          <div class="row small">
+            <span id="rate-exp"></span><span id="rate-gold"></span>
+          </div>
         </div>
-        <div class="row small">
-          <span id="rate-exp"></span><span id="rate-gold"></span>
-        </div>
+
+        <div class="window battle-log"><div class="small">전투 기록</div><div id="battle-log"></div></div>
       </div>
 
-      <nav class="tabs">
-        <button class="tab active" data-tab="equip">장비</button>
-        <button class="tab" data-tab="skill">스킬</button>
-        <button class="tab" data-tab="relic">유물</button>
-        <button class="tab" data-tab="pet">펫</button>
-        <button class="tab" data-tab="quest">퀘스트</button>
-        <button class="tab" data-tab="me">정보</button>
-      </nav>
-
-      <div class="window panel" id="tab-equip"></div>
-      <div class="window panel hidden" id="tab-skill"></div>
-      <div class="window panel hidden" id="tab-relic"></div>
-      <div class="window panel hidden" id="tab-pet"></div>
-      <div class="window panel hidden" id="tab-quest"></div>
-      <div class="window panel hidden" id="tab-me"></div>
+      <div class="col-right">
+        <nav class="tabs">
+          <button class="tab active" data-tab="grow">성장</button>
+          <button class="tab" data-tab="equip">장비</button>
+          <button class="tab" data-tab="skill">스킬</button>
+          <button class="tab" data-tab="relic">유물</button>
+          <button class="tab" data-tab="pet">펫</button>
+          <button class="tab" data-tab="guild">길드</button>
+          <button class="tab" data-tab="quest">퀘스트</button>
+          <button class="tab" data-tab="me">정보</button>
+        </nav>
+        <div class="window panel" id="tab-grow"></div>
+        <div class="window panel hidden" id="tab-equip"></div>
+        <div class="window panel hidden" id="tab-skill"></div>
+        <div class="window panel hidden" id="tab-relic"></div>
+        <div class="window panel hidden" id="tab-pet"></div>
+        <div class="window panel hidden" id="tab-guild"></div>
+        <div class="window panel hidden" id="tab-quest"></div>
+        <div class="window panel hidden" id="tab-me"></div>
+      </div>
     </section>
 
     <div id="toast" class="toast hidden"></div>

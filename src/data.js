@@ -64,6 +64,8 @@ window.GAME_DATA = {
    * Attack skills: 3 per class, unlocked by level, upgraded with gold, auto-cast
    * in battle when off cooldown. type 'nuke' = one hit of mult × ATK,
    * 'multi' = `hits` hits of mult × ATK, 'haste' = attack speed × mult for `dur` s.
+   * anim (visual only): projectile | meteor | beam (nuke), slashes | summon | rain
+   * (multi), aura (haste). fx is the emoji drawn by the effect.
    */
   skills: {
     dmgPerLevel: 0.25,       // +25% skill damage per skill level above 1
@@ -72,34 +74,34 @@ window.GAME_DATA = {
     tierCostMult: [1, 2.5, 6],
     byClass: {
       insider: [
-        { id: 'flag', fx: '🚩', name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
-        { id: 'groupcall', fx: '💬', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
-        { id: 'insta', fx: '🎉', name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
+        { id: 'flag', anim: 'projectile', fx: '🚩', name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
+        { id: 'groupcall', anim: 'summon', fx: '💬', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
+        { id: 'insta', anim: 'beam', fx: '🎉', name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
       ],
       hermit: [
-        { id: 'dagger', fx: '🗡️', name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
-        { id: 'shadow', fx: '🌙', name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
-        { id: 'midnight', fx: '🌑', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
+        { id: 'dagger', anim: 'slashes', fx: '🗡️', name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
+        { id: 'shadow', anim: 'summon', fx: '🌙', name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
+        { id: 'midnight', anim: 'beam', fx: '🌑', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
       ],
       berserker: [
-        { id: 'pencil', fx: '✏️', name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
-        { id: 'cram', fx: '⚡', name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
-        { id: 'deadline', fx: '🔥', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
+        { id: 'pencil', anim: 'meteor', fx: '✏️', name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
+        { id: 'cram', anim: 'slashes', fx: '⚡', name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
+        { id: 'deadline', anim: 'meteor', fx: '🔥', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
       ],
       planner: [
-        { id: 'shield', fx: '🛡️', name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
-        { id: 'checklist', fx: '✅', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
-        { id: 'timeline', fx: '⏰', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
+        { id: 'shield', anim: 'projectile', fx: '🛡️', name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
+        { id: 'checklist', anim: 'slashes', fx: '✅', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
+        { id: 'timeline', anim: 'aura', fx: '⏰', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
       ],
       foodie: [
-        { id: 'tray', fx: '🍱', name: '식판 던지기',   unlock: 1,  type: 'nuke',  mult: 3,   cd: 4.5, desc: '식판 투척' },
-        { id: 'soup', fx: '🍲', name: '뜨거운 국밥',   unlock: 5,  type: 'multi', hits: 6, mult: 1.1, cd: 11, desc: '펄펄 끓는 국물 세례' },
-        { id: 'feast', fx: '🍚', name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
+        { id: 'tray', anim: 'projectile', fx: '🍱', name: '식판 던지기',   unlock: 1,  type: 'nuke',  mult: 3,   cd: 4.5, desc: '식판 투척' },
+        { id: 'soup', anim: 'rain', fx: '🍲', name: '뜨거운 국밥',   unlock: 5,  type: 'multi', hits: 6, mult: 1.1, cd: 11, desc: '펄펄 끓는 국물 세례' },
+        { id: 'feast', anim: 'meteor', fx: '🍚', name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
       ],
       rogue: [
-        { id: 'dash', fx: '💨', name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
-        { id: 'clones', fx: '👤', name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
-        { id: 'comet', fx: '☄️', name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
+        { id: 'dash', anim: 'slashes', fx: '💨', name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
+        { id: 'clones', anim: 'summon', fx: '👤', name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
+        { id: 'comet', anim: 'meteor', fx: '☄️', name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
       ]
     }
   },
@@ -185,8 +187,81 @@ window.GAME_DATA = {
    */
   lms: {
     exportUrl: 'https://lms.inu.ac.kr/calendar/export.php',
+    // Hourly sync: the player pastes the subscription URL from 「캘린더 URL 얻기」;
+    // it stays in this browser and is fetched through the /api/ics proxy (CORS).
+    proxy: '/api/ics',
+    allowedHost: 'lms.inu.ac.kr',
+    syncMinutes: 60,
     rewardGold: 400,
     rewardExp: 120
+  },
+
+  /**
+   * 길드 점령전 (single-player simulation). You join a 학과; the other 학과 are AI
+   * guilds that own campus buildings. Attacking a building is a timed siege
+   * against its guardian. Owned buildings give buffs; AI guilds try to retake
+   * them every `counterIntervalMin` real minutes (fortify lowers the odds).
+   * 학과 names are real (see colleges); building names other than 학산도서관 are placeholders.
+   */
+  territory: {
+    // Source: ko.wikipedia.org/wiki/인천대학교 (개설 학과), with 2025–26 renames
+    // (신문방송학과 → 미디어커뮤니케이션학과, 무역학부 → Global Trade & Service학부).
+    colleges: [
+      { name: '인문대학', color: '#ff9a9a', depts: ['국어국문학과', '독어독문학과', '일어일문학과', '영어영문학과', '불어불문학과', '중어중국학과'] },
+      { name: '자연과학대학', color: '#7ad7ff', depts: ['수학과', '물리학과', '화학과', '패션산업학과', '해양학과'] },
+      { name: '사회과학대학', color: '#ffc46b', depts: ['사회복지학과', '미디어커뮤니케이션학과', '문헌정보학과', '창의인재개발학과'] },
+      { name: '글로벌법정경대학', color: '#c39bff', depts: ['행정학과', '정치외교학과', '경제학과', 'Global Trade & Service학부', '소비자학과', '동북아국제통상학부', '법학부'] },
+      { name: '공과대학', color: '#ff7a3c', depts: ['기계공학과', '전기공학과', '전자공학과', '산업경영공학과', '신소재공학과', '안전공학과', '에너지화학공학과', '메카트로닉스공학과'] },
+      { name: '정보기술대학', color: '#4aa8ff', depts: ['컴퓨터공학부', '정보통신공학과', '임베디드시스템공학과'] },
+      { name: '경영대학', color: '#ff5a9a', depts: ['경영학부', '세무회계학과', '데이터과학과'] },
+      { name: '예술체육대학', color: '#ffe14a', depts: ['조형예술학부', '디자인학부', '공연예술학과', '체육학부', '운동건강학부'] },
+      { name: '사범대학', color: '#3ee07a', depts: ['국어교육과', '영어교육과', '일어교육과', '수학교육과', '체육교육과', '유아교육과', '역사교육과', '윤리교육과'] },
+      { name: '도시과학대학', color: '#9be36b', depts: ['도시행정학과', '도시환경공학부', '도시공학과', '도시건축학부'] },
+      { name: '생명과학기술대학', color: '#6bffd1', depts: ['생명과학부', '생명공학부'] }
+    ],
+    buildings: [
+      { id: 'b1',  name: '1호관',   tier: 1,  buff: { stat: 'gold', value: 0.05, label: '골드 +5%' } },
+      { id: 'b2',  name: '2호관',   tier: 2,  buff: { stat: 'exp',  value: 0.05, label: 'EXP +5%' } },
+      { id: 'b3',  name: '3호관',   tier: 3,  buff: { stat: 'atk',  value: 0.06, label: '공격력 +6%' } },
+      { id: 'b4',  name: '4호관',   tier: 4,  buff: { stat: 'hp',   value: 0.08, label: '최대 HP +8%' } },
+      { id: 'b5',  name: '5호관',   tier: 5,  buff: { stat: 'gold', value: 0.08, label: '골드 +8%' } },
+      { id: 'b6',  name: '6호관',   tier: 6,  buff: { stat: 'exp',  value: 0.08, label: 'EXP +8%' } },
+      { id: 'b7',  name: '7호관',   tier: 7,  buff: { stat: 'atk',  value: 0.10, label: '공격력 +10%' } },
+      { id: 'b8',  name: '8호관',   tier: 8,  buff: { stat: 'hp',   value: 0.12, label: '최대 HP +12%' } },
+      { id: 'lib', name: '학산도서관',   tier: 9,  buff: { stat: 'exp',  value: 0.15, label: 'EXP +15%' } },
+      { id: 'sub', name: '학생회관', tier: 10, buff: { stat: 'gold', value: 0.15, label: '골드 +15%' } }
+    ],
+    siegeHpBase: 500,
+    siegeHpGrowth: 1.45,       // per building tier
+    siegeAtkBase: 9,
+    siegeAtkGrowth: 1.28,
+    siegeTimeLimit: 40,        // seconds
+    captureRewardMult: 4,      // banked study gains × this on capture
+    recLevelPerTier: 4,        // shown as "권장 Lv."
+    counterIntervalMin: 15,
+    retakeChance: 0.35,        // per owned building per interval, before fortify
+    fortifyReduce: 0.07,       // −7%p retake chance per fortify level
+    fortifyMax: 5,
+    fortifyCostBase: 300,
+    fortifyCostGrowth: 1.7,
+    maxCounterTicks: 8,        // cap on intervals processed after a long absence
+    logSize: 8
+  },
+
+  /**
+   * 성장 stats bought with gold. Each level adds `per` (fraction, or flat for
+   * critRate). Cost = costBase × costGrowth^level. `max` caps the level.
+   */
+  stats: {
+    list: [
+      { id: 'atk',      name: '공격력',      icon: '⚔️', per: 0.06, unit: '%', max: 200, costBase: 60,  costGrowth: 1.15 },
+      { id: 'hp',       name: '최대 HP',     icon: '❤️', per: 0.08, unit: '%', max: 200, costBase: 60,  costGrowth: 1.15 },
+      { id: 'critRate', name: '치명타 확률', icon: '🎯', per: 0.01, unit: '%', max: 50,  costBase: 150, costGrowth: 1.22 },
+      { id: 'critDmg',  name: '치명타 피해', icon: '💥', per: 0.05, unit: '%', max: 100, costBase: 150, costGrowth: 1.2 },
+      { id: 'aspd',     name: '공격 속도',   icon: '⚡', per: 0.02, unit: '%', max: 50,  costBase: 200, costGrowth: 1.25 }
+    ],
+    baseCritRate: 0.05,
+    baseCritDmg: 1.5
   },
 
   /** Demo/testing helpers shown in the 정보 tab. */

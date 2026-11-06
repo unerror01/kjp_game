@@ -77,7 +77,7 @@
   function create(canvas, opts) {
     const D = opts.data.battle;
     const ctx = canvas.getContext('2d');
-    let W = 360, H = D.sceneHeight, dpr = 1;
+    let W = 360, H = D.sceneHeight, dpr = 1, scale = 1;
     let heroFrames = [], mobSprites = {}, bossSprites = {};
     let scroll = 0, t = 0, last = 0, raf = 0;
     let mob = null, gap = 60;
@@ -89,6 +89,7 @@
     const floats = [];
     let heroHp = null, down = 0, mobAtkT = 0, banner = null, shakeT = 0, flashT = 0, petSprite = null;
     const particles = [];       // { x, y, vx, vy, life, max, color, size, shape }
+    const beams = [];           // { life, max, color } hero→mob laser
 
     /** Class-themed particle spray at (x, y). */
     function spray(x, y, n, speed, sizeMul) {
@@ -101,11 +102,14 @@
       }
     }
 
+    /** Logical world is sceneHeight tall; on tall screens (PC) it is scaled up uniformly. */
     function resize() {
       dpr = Math.min(2, window.devicePixelRatio || 1);
-      W = canvas.clientWidth || 360;
-      canvas.width = W * dpr; canvas.height = H * dpr;
-      canvas.style.height = H + 'px';
+      const cssW = canvas.clientWidth || 360;
+      const cssH = canvas.clientHeight || D.sceneHeight;
+      scale = cssH / D.sceneHeight;
+      W = cssW / scale;
+      canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
     }
 
     function spawn() {
@@ -113,21 +117,35 @@
       mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
               size: m.boss ? D.bossSize : D.mobSize };
       mob.atk = m.atk;
+      mob.siege = m.siege || null;
       mobAtkT = 0;
-      bossT = m.boss ? opts.data.combat.bossTimeLimit : 0;
-      if (m.boss) { banner = { name: m.def.name, life: 2.4 }; shakeT = 0.5; }
+      bossT = m.boss ? (m.timeLimit || opts.data.combat.bossTimeLimit) : 0;
+      mob.timeLimit = bossT;
+      if (m.boss) { banner = { title: m.bannerTitle || '⚠ BOSS 등장 ⚠', name: m.def.name, life: 2.4 }; shakeT = 0.5; }
     }
 
     function fmtN(n) { return Math.floor(n).toLocaleString('ko-KR'); }
 
+    /** Applies damage with a crit roll. Crits show bigger orange numbers. */
     function damage(dmg, big) {
       if (!mob || mob.dying > 0) return;
+      const c = opts.heroCrit();
+      const crit = Math.random() < c.rate;
+      if (crit) dmg *= c.mult;
       mob.hp -= dmg; mob.flash = 0.12;
-      float(fmtN(dmg), mob.x + mob.size / 2 + (Math.random() - 0.5) * 30, H - 40 - mob.size, big ? '#ffd84a' : '#ffffff', big);
+      const x = mob.x + mob.size / 2 + (Math.random() - 0.5) * 30, y = H - 40 - mob.size;
+      if (crit) { float('CRIT ' + fmtN(dmg), x, y - 8, '#ff7a1a', true); shakeT = Math.max(shakeT, 0.08); }
+      else float(fmtN(dmg), x, y, big ? '#ffd84a' : '#ffffff', big);
       if (mob.hp <= 0) kill();
     }
 
     function clearAttacks() { pendingHits.length = 0; projectiles.length = 0; }
+
+    /** Big impact: emoji burst, particle explosion, flash and shake. */
+    function impact(fx, x, y, big) {
+      if (big) { burst(fx, x, y, 96, true); spray(x, y, 70, 300, 2); shakeT = 0.25; flashT = 0.12; }
+      else { burst(fx, x, y, 44, false); spray(x, y, 22, 200, 1.6); shakeT = Math.max(shakeT, 0.06); }
+    }
 
     function burst(fx, x, y, size, ring) { bursts.push({ fx, x, y, size, ring, life: 0.45, max: 0.45 }); }
 
@@ -167,10 +185,25 @@
         const r = opts.castSkill(s.id);
         const hx = D.heroX + D.heroSize, hy = H - 34 - D.heroSize / 2;
         if (r.haste) { haste = r.haste.dur; hasteMult = r.haste.mult; burst(s.fx, D.heroX + D.heroSize / 2, hy, 46, true); }
-        if (s.type === 'nuke') {
-          const c = mobCenter();
-          projectiles.push({ fx: s.fx, x0: hx, y0: hy, x1: c.x, y1: c.y, t: 0, dur: 0.28, dmg: r.hits[0] });
-        } else {
+        const c = mobCenter();
+        const anim = s.anim || (s.type === 'nuke' ? 'projectile' : 'slashes');
+        if (anim === 'projectile') {
+          projectiles.push({ fx: s.fx, x0: hx, y0: hy, x1: c.x, y1: c.y, t: 0, dur: 0.28, dmg: r.hits[0], big: true, arc: 30 });
+        } else if (anim === 'meteor') {
+          projectiles.push({ fx: s.fx, x0: c.x + 70, y0: -30, x1: c.x, y1: c.y, t: -0.1, dur: 0.38, dmg: r.hits[0], big: true, arc: 0, size: 54 });
+          float('!', c.x, 40, '#ff3a50', true);
+        } else if (anim === 'beam') {
+          beams.push({ life: 0.45, max: 0.45 });
+          pendingHits.push({ at: 0.15, dmg: r.hits[0], fx: s.fx, big: true });
+        } else if (anim === 'summon') {
+          r.hits.forEach((d, i) => projectiles.push({ ghost: true, fx: s.fx, x0: D.heroX, y0: H - 34 - D.heroSize, x1: c.x - D.heroSize / 2, y1: H - 34 - D.heroSize,
+            t: -i * 0.1, dur: 0.22, dmg: d, big: false, arc: 0 }));
+        } else if (anim === 'rain') {
+          r.hits.forEach((d, i) => {
+            const x = c.x + (Math.random() - 0.5) * mob.size * 0.8;
+            projectiles.push({ fx: s.fx, x0: x, y0: -20, x1: x, y1: c.y + (Math.random() - 0.5) * 20, t: -i * 0.1, dur: 0.3, dmg: d, big: false, arc: 0, size: 26 });
+          });
+        } else if (anim === 'slashes') {
           r.hits.forEach((d, i) => pendingHits.push({ at: 0.08 + i * 0.09, dmg: d, fx: s.fx }));
         }
         break; // one skill per frame
@@ -298,7 +331,7 @@
         if (mob) mob.x -= D.walkSpeed * dt;
         else if ((gap -= D.walkSpeed * dt) <= 0) spawn();
       } else if (engaged) {
-        hitT += dt * (haste > 0 ? hasteMult : 1);
+        hitT += dt * (haste > 0 ? hasteMult : 1) * opts.heroAspd();
         if (hitT >= D.hitInterval) {
           hitT = 0; lunge = 0.14;
           if (mob) { const c = mobCenter(); spray(c.x - mob.size * 0.2, c.y, 16, 170, 1.4); burst("", c.x - mob.size * 0.2, c.y, 26, true); }
@@ -328,13 +361,13 @@
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
         p.t += dt;
-        { const k = Math.min(1, p.t / p.dur); spray(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * 30, 5, 50, 1.3); }
+        if (p.t < 0) continue;
+        if (!p.ghost) { const k = Math.min(1, p.t / p.dur); spray(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * (p.arc || 0), p.big ? 5 : 2, 50, p.big ? 1.3 : 0.8); }
         if (p.t >= p.dur) {
           projectiles.splice(i, 1);
           if (mob && mob.dying <= 0) {
             const c = mobCenter();
-            burst(p.fx, c.x, c.y, 96, true); spray(c.x, c.y, 70, 300, 2);
-            shakeT = 0.25; flashT = 0.12;
+            impact(p.fx, p.ghost ? c.x + (Math.random() - 0.5) * 20 : p.x1, p.ghost ? c.y : p.y1, p.big);
           }
           damage(p.dmg, true);
         }
@@ -346,11 +379,12 @@
       for (const h of ready) {
         if (mob && mob.dying <= 0) {
           const c = mobCenter();
-          const bx = c.x + (Math.random() - 0.5) * mob.size * 0.6, by = c.y + (Math.random() - 0.5) * mob.size * 0.5;
-          burst(h.fx, bx, by, 44, false); spray(bx, by, 22, 200, 1.6); shakeT = Math.max(shakeT, 0.06);
+          if (h.big) impact(h.fx, c.x, c.y, true);
+          else impact(h.fx, c.x + (Math.random() - 0.5) * mob.size * 0.6, c.y + (Math.random() - 0.5) * mob.size * 0.5, false);
         }
         damage(h.dmg, true);
       }
+      for (let i = beams.length - 1; i >= 0; i--) { beams[i].life -= dt; if (beams[i].life <= 0) beams.splice(i, 1); }
       if (down <= 0) castSkills(dt);
       haste = Math.max(0, haste - dt);
       if (mob && mob.dying > 0) {
@@ -365,7 +399,8 @@
 
       // draw
       const sx = shakeT > 0 ? (Math.random() - 0.5) * 8 : 0, sy = shakeT > 0 ? (Math.random() - 0.5) * 6 : 0;
-      ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
+      const k = dpr * scale;
+      ctx.setTransform(k, 0, 0, k, sx * k, sy * k);
       const night = sky();
       farLayer(night);
       nearLayer(night);
@@ -418,7 +453,7 @@
         const alpha = mob.dying > 0 ? Math.max(0, mob.dying / 0.5) : 1;
         const my = H - 34 - mob.size + (Math.sin(t * 3) * 2);
         shadow(mob.x + mob.size / 2, mob.size * 0.6);
-        drawSprite(sp, mob.x + shake - (mob.lunge > 0 ? 10 : 0), my, mob.size, alpha, mob.flash, mob.boss ? 0 : mob.def.hue);
+        drawSprite(sp, mob.x + shake - (mob.lunge > 0 ? 10 : 0), my, mob.size, alpha, mob.flash, mob.def.hue || 0);
         if (mob.dying <= 0 && !mob.boss) {
           const bw = mob.size * 0.8, bx = mob.x + mob.size * 0.1, by = my - 4;
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 7);
@@ -435,7 +470,7 @@
           ctx.fillStyle = '#ff3a50'; ctx.fillRect(bx, by, bw * Math.max(0, mob.hp) / mob.max, 14);
           ctx.font = 'bold 10px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
           ctx.fillText('👑 ' + mob.def.name + '  ' + fmtN(Math.max(0, mob.hp)) + ' / ' + fmtN(mob.max), bx + bw / 2, by + 11);
-          const limit = opts.data.combat.bossTimeLimit;
+          const limit = mob.timeLimit || opts.data.combat.bossTimeLimit;
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by + 17, bw + 4, 6);
           ctx.fillStyle = bossT < 8 ? '#ff5a6a' : '#ffd84a'; ctx.fillRect(bx, by + 18, bw * Math.max(0, bossT) / limit, 4);
         }
@@ -443,11 +478,33 @@
 
       // skill effects
       for (const p of projectiles) {
-        const k = p.t / p.dur;
-        const x = p.x0 + (p.x1 - p.x0) * k, y = p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * 30;
+        if (p.t < 0) continue;
+        const k = Math.min(1, p.t / p.dur);
+        const x = p.x0 + (p.x1 - p.x0) * k, y = p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * (p.arc || 0);
+        if (p.ghost) {
+          // a translucent copy of the hero dashing in
+          drawSprite(hf, x, y, D.heroSize, 0.45, 0, 180);
+          continue;
+        }
+        const z = p.size || 34;
         ctx.textAlign = 'center';
-        ctx.globalAlpha = 0.35; ctx.font = '26px sans-serif'; ctx.fillText(p.fx, x - 14, y + 8);
-        ctx.globalAlpha = 1; ctx.font = '34px sans-serif'; ctx.fillText(p.fx, x, y + 12);
+        ctx.globalAlpha = 0.35; ctx.font = Math.round(z * 0.75) + 'px sans-serif'; ctx.fillText(p.fx, x - (p.x1 - p.x0) * 0.08, y - (p.y1 - p.y0) * 0.08 + z * 0.25);
+        ctx.globalAlpha = 1; ctx.font = z + 'px sans-serif'; ctx.fillText(p.fx, x, y + z * 0.35);
+      }
+      for (const b of beams) {
+        const k = b.life / b.max, th = opts.classFx();
+        const y = H - 34 - D.heroSize / 2, x0 = D.heroX + D.heroSize - 6, x1 = mob ? mob.x + mob.size / 2 : W;
+        ctx.globalAlpha = k;
+        ctx.fillStyle = th.colors[0]; ctx.fillRect(x0, y - 14 * k, x1 - x0, 28 * k);
+        ctx.fillStyle = '#fff'; ctx.fillRect(x0, y - 5 * k, x1 - x0, 10 * k);
+        ctx.globalAlpha = 1;
+      }
+      if (haste > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+          const yy = H - 40 - ((t * 300 + i * 23) % D.heroSize);
+          ctx.beginPath(); ctx.moveTo(D.heroX - 30, yy); ctx.lineTo(D.heroX - 6, yy); ctx.stroke();
+        }
       }
       for (let i = bursts.length - 1; i >= 0; i--) {
         const b = bursts[i];
@@ -539,8 +596,8 @@
           const pulse = 1 + Math.sin(t * 12) * 0.05;
           ctx.save(); ctx.translate(W / 2, H / 2 - 6); ctx.scale(pulse, pulse);
           ctx.font = 'bold 30px Galmuri11, sans-serif'; ctx.textAlign = 'center';
-          ctx.fillStyle = '#000'; ctx.fillText('⚠ BOSS 등장 ⚠', 2, 2);
-          ctx.fillStyle = '#ff3a50'; ctx.fillText('⚠ BOSS 등장 ⚠', 0, 0);
+          ctx.fillStyle = '#000'; ctx.fillText(banner.title, 2, 2);
+          ctx.fillStyle = '#ff3a50'; ctx.fillText(banner.title, 0, 0);
           ctx.restore();
           ctx.font = 'bold 14px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd84a';
           ctx.fillText('👑 ' + banner.name, W / 2, H / 2 + 18);
@@ -552,10 +609,10 @@
       const rd = opts.getRound();
       ctx.font = 'bold 11px Galmuri11, sans-serif'; ctx.textAlign = 'left';
       ctx.fillStyle = '#000a'; ctx.fillRect(6, 6, 96, 32);
-      ctx.fillStyle = rd.isBoss ? '#ff5a6a' : '#ffd84a'; ctx.fillText('ROUND ' + rd.round + (rd.isBoss ? ' BOSS' : ''), 12, 19);
+      ctx.fillStyle = rd.isBoss || rd.siege ? '#ff5a6a' : '#ffd84a'; ctx.fillText(rd.siege ? '⚔ 점령전' : 'ROUND ' + rd.round + (rd.isBoss ? ' BOSS' : ''), 12, 19);
       ctx.font = '10px Galmuri11, sans-serif'; ctx.fillStyle = '#fff';
       const fightingBoss = mob && mob.boss && mob.dying <= 0;
-      ctx.fillText(rd.isBoss ? (fightingBoss ? '제한 ' + Math.ceil(Math.max(0, bossT)) + '초' : '보스 대기 중') : '처치 ' + rd.roundKills + ' / ' + rd.count, 12, 32);
+      ctx.fillText(rd.siege ? (fightingBoss ? '제한 ' + Math.ceil(Math.max(0, bossT)) + '초' : rd.siege) : rd.isBoss ? (fightingBoss ? '제한 ' + Math.ceil(Math.max(0, bossT)) + '초' : '보스 대기 중') : '처치 ' + rd.roundKills + ' / ' + rd.count, 12, 32);
 
       raf = requestAnimationFrame(frame);
     }

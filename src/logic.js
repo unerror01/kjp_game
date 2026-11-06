@@ -189,8 +189,9 @@
     const combo = comboStacks(state, data) * i.comboBonusPerStack;
     const sk = skillModifiers(state, data, now);
     const pb = petBonus(state, data);
-    const expMul = 1 + lvl + combo + sk.exp + rb.exp + pb.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
-    const goldMul = (1 + lvl + combo + sk.gold + rb.gold + pb.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
+    const tb = territoryBonus(state, data);
+    const expMul = 1 + lvl + combo + sk.exp + rb.exp + pb.exp + tb.exp + equipBonus(state, 'exp', data) + potentialPct(state, 'exp', data, now) / 100;
+    const goldMul = (1 + lvl + combo + sk.gold + rb.gold + pb.gold + tb.gold + equipBonus(state, 'gold', data) + potentialPct(state, 'gold', data, now) / 100) * sk.goldMult;
     return { expPerSec: i.baseExpPerSec * expMul, goldPerSec: i.baseGoldPerSec * goldMul, expMul, goldMul, combo, skill: sk };
   }
 
@@ -347,7 +348,7 @@
   /** Hero auto-attack damage. */
   function heroAtk(state, data) {
     const c = data.combat;
-    return c.atkBase * (1 + c.atkPerLevel * (state.level - 1)) * (1 + petBonus(state, data).atk);
+    return c.atkBase * (1 + c.atkPerLevel * (state.level - 1)) * (1 + petBonus(state, data).atk + territoryBonus(state, data).atk + statBonus(state, 'atk', data));
   }
 
   /** { isBoss, count } for a round number (1-based). */
@@ -366,7 +367,7 @@
   /** Hero max HP. */
   function heroMaxHp(state, data) {
     const c = data.combat;
-    return Math.floor(c.heroHpBase * (1 + c.heroHpPerLevel * (state.level - 1)) * (1 + petBonus(state, data).hp));
+    return Math.floor(c.heroHpBase * (1 + c.heroHpPerLevel * (state.level - 1)) * (1 + petBonus(state, data).hp + territoryBonus(state, data).hp + statBonus(state, 'hp', data)));
   }
 
   /** Damage one mob attack deals in `round`. */
@@ -580,7 +581,170 @@
     return state.quests.length;
   }
 
+  // ---------- 길드 점령전 (simulated) ----------
+
+  /** All 학과 as [{ id, name, college, color }] (id = name). */
+  function deptList(data) {
+    const out = [];
+    for (const c of data.territory.colleges) for (const n of c.depts) out.push({ id: n, name: n, college: c.name, color: c.color });
+    return out;
+  }
+
+  /**
+   * Joins a 학과. Rival AI guilds are one 학과 from each other college (the first
+   * listed), plus another 학과 from your own college; they split the buildings.
+   */
+  function joinDept(state, deptId, data, now) {
+    const T = data.territory;
+    const all = deptList(data);
+    const me = all.find(d => d.id === deptId);
+    const rivals = T.colleges.filter(c => c.name !== me.college).map(c => c.depts[0]);
+    const mate = T.colleges.find(c => c.name === me.college).depts.find(n => n !== deptId);
+    if (mate) rivals.unshift(mate);
+    const owners = {};
+    T.buildings.forEach((b, i) => { owners[b.id] = rivals[i % rivals.length]; });
+    state.territory = { dept: deptId, owners, fortify: {}, lastTick: now, log: [] };
+  }
+
+  /** Buff fractions from buildings your 학과 owns: { gold, exp, atk, hp }. */
+  function territoryBonus(state, data) {
+    const b = { gold: 0, exp: 0, atk: 0, hp: 0 };
+    const t = state.territory;
+    if (!t) return b;
+    for (const bd of data.territory.buildings) if (t.owners[bd.id] === t.dept) b[bd.buff.stat] += bd.buff.value;
+    return b;
+  }
+
+  function siegeHp(tier, data) {
+    const T = data.territory;
+    return Math.ceil(T.siegeHpBase * Math.pow(T.siegeHpGrowth, tier - 1));
+  }
+
+  function siegeAtk(tier, data) {
+    const T = data.territory;
+    return T.siegeAtkBase * Math.pow(T.siegeAtkGrowth, tier - 1);
+  }
+
+  function warLog(state, data, now, text) {
+    const t = state.territory;
+    t.log.unshift({ at: now, text });
+    t.log.length = Math.min(t.log.length, data.territory.logSize);
+  }
+
+  /** Siege won: the building becomes yours (fortify resets). */
+  function captureBuilding(state, buildingId, data, now) {
+    const t = state.territory;
+    const bd = data.territory.buildings.find(b => b.id === buildingId);
+    const prev = deptList(data).find(d => d.id === t.owners[buildingId]);
+    t.owners[buildingId] = t.dept;
+    t.fortify[buildingId] = 0;
+    warLog(state, data, now, '⚔ ' + bd.name + ' 점령! (' + (prev ? prev.name : '?') + '에게서)');
+  }
+
+  function fortifyCost(level, data) {
+    const T = data.territory;
+    return Math.floor(T.fortifyCostBase * Math.pow(T.fortifyCostGrowth, level));
+  }
+
+  /** Spends gold to fortify an owned building. Returns true on success. */
+  function fortify(state, buildingId, data) {
+    const t = state.territory;
+    if (!t || t.owners[buildingId] !== t.dept) return false;
+    const lv = t.fortify[buildingId] || 0;
+    if (lv >= data.territory.fortifyMax) return false;
+    const cost = fortifyCost(lv, data);
+    if (state.gold < cost) return false;
+    state.gold -= cost;
+    t.fortify[buildingId] = lv + 1;
+    return true;
+  }
+
+  function retakeChance(state, buildingId, data) {
+    const T = data.territory;
+    return Math.max(0, T.retakeChance - T.fortifyReduce * (state.territory.fortify[buildingId] || 0));
+  }
+
+  /**
+   * AI 학과 counterattacks for every elapsed interval since lastTick (capped).
+   * Returns the buildings lost: [{ building, by }].
+   */
+  function simulateCounter(state, data, now, rng) {
+    const t = state.territory;
+    if (!t) return [];
+    const T = data.territory;
+    const step = T.counterIntervalMin * 60000;
+    const ticks = Math.min(T.maxCounterTicks, Math.floor((now - t.lastTick) / step));
+    if (ticks <= 0) return [];
+    t.lastTick += ticks * step;
+    if (now - t.lastTick > step) t.lastTick = now;
+    const ownerIds = [...new Set(Object.values(t.owners))].filter(id => id !== t.dept);
+    const all = deptList(data);
+    const ai = (ownerIds.length ? ownerIds : all.filter(d => d.id !== t.dept).slice(0, 6).map(d => d.id)).map(id => all.find(d => d.id === id));
+    const lost = [];
+    for (let k = 0; k < ticks; k++) {
+      for (const bd of T.buildings) {
+        if (t.owners[bd.id] !== t.dept) continue;
+        if (rng() < retakeChance(state, bd.id, data)) {
+          const by = ai[Math.floor(rng() * ai.length)];
+          t.owners[bd.id] = by.id;
+          t.fortify[bd.id] = 0;
+          lost.push({ building: bd, by });
+          warLog(state, data, now, '🛡 ' + by.name + '이(가) ' + bd.name + '을(를) 탈환했어요');
+        }
+      }
+    }
+    return lost;
+  }
+
+  /** Building counts per 학과 that holds any building (plus yours), most first: [{ dept, count }]. */
+  function deptRanking(state, data) {
+    const t = state.territory;
+    if (!t) return [];
+    return deptList(data)
+      .map(d => ({ dept: d, count: Object.values(t.owners).filter(o => o === d.id).length }))
+      .filter(r => r.count > 0 || r.dept.id === t.dept)
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // ---------- 성장 stats ----------
+
+  function statDef(id, data) { return data.stats.list.find(x => x.id === id); }
+  function statLevel(state, id) { return (state.stats && state.stats[id]) || 0; }
+  /** Total bonus from a stat (fraction). */
+  function statBonus(state, id, data) { const d = statDef(id, data); return d ? d.per * statLevel(state, id) : 0; }
+  function statCost(state, id, data) {
+    const d = statDef(id, data);
+    return Math.floor(d.costBase * Math.pow(d.costGrowth, statLevel(state, id)));
+  }
+  /** Spends gold to raise a stat by one. Returns true on success. */
+  function upgradeStat(state, id, data) {
+    const d = statDef(id, data);
+    if (!d || statLevel(state, id) >= d.max) return false;
+    const cost = statCost(state, id, data);
+    if (state.gold < cost) return false;
+    state.gold -= cost;
+    if (!state.stats) state.stats = {};
+    state.stats[id] = statLevel(state, id) + 1;
+    return true;
+  }
+  /** { rate, mult } for critical hits. */
+  function heroCrit(state, data) {
+    return { rate: Math.min(1, data.stats.baseCritRate + statBonus(state, 'critRate', data)),
+             mult: data.stats.baseCritDmg + statBonus(state, 'critDmg', data) };
+  }
+  /** Attack speed multiplier (1 = base). */
+  function heroAspd(state, data) { return 1 + statBonus(state, 'aspd', data); }
+  /** Single "전투력" number for display and recommendations. */
+  function combatPower(state, data) {
+    const c = heroCrit(state, data);
+    const dps = heroAtk(state, data) * heroAspd(state, data) * (1 + c.rate * (c.mult - 1));
+    return Math.round(dps * 20 + heroMaxHp(state, data) * 0.5);
+  }
+
   const api = {
+    statBonus, statLevel, statCost, upgradeStat, heroCrit, heroAspd, combatPower,
+    deptList, joinDept, territoryBonus, siegeHp, siegeAtk, captureBuilding, fortifyCost, fortify, retakeChance,
+    simulateCounter, deptRanking,
     petBonus, pullPets, petRerollCost, rerollPet, equipPet, parseIcs, parseIcsDate, importQuests,
     heroMaxHp, mobAtk, atBossGate, heroDown,
     relicCount, relicBonus, pullRelics, offlineEfficiency,

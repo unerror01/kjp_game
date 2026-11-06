@@ -141,6 +141,24 @@ body {
 .pet-btns .btn.small-btn { padding: 5px 2px; font-size: 10px; width: 100%; }
 .pet-mini { width: 36px; height: 36px; object-fit: contain; image-rendering: pixelated; }
 
+.tabs { flex-wrap: wrap; }
+.tab { flex: 1 0 22%; }
+
+.college { margin: 8px 0; }
+.college-name { font-weight: bold; margin-bottom: 4px; }
+.dept-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.dept-btn.btn.small-btn { font-size: 11px; padding: 6px 8px; }
+.rank { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.rank-chip { font-size: 10px; border: 2px solid; border-radius: 3px; padding: 2px 6px; background: #0a1240; }
+.rank-chip.me { background: #22339e; }
+.bld-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.bld { background: #0a1240; border: 2px solid; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+.bld.mine { box-shadow: 0 0 8px var(--gold); }
+.bld-head { display: flex; justify-content: space-between; align-items: center; }
+.bld-owner { font-size: 11px; }
+.bld .btn.small-btn { width: 100%; font-size: 11px; padding: 6px 2px; }
+.btn.warn { border-color: var(--red); }
+
 .lms-box { background: #0a1240; border: 2px dashed var(--gold); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
 .file-btn { position: relative; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -168,3 +186,51 @@ body {
 .modal { position: fixed; inset: 0; background: #000a; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 30; }
 .modal .window { max-width: 400px; width: 100%; }
 .big-num { font-size: 22px; color: var(--gold); }
+
+/* ---------- top bar, battle log, 성장 ---------- */
+.topbar { display: flex; align-items: center; gap: 10px; }
+.topbar .brand { display: none; }
+.topbar .hero-info { flex: 1; min-width: 0; }
+.topbar .avatar { width: 52px; height: 52px; }
+.top-stats { display: flex; gap: 10px; align-items: baseline; }
+.cp { font-size: 12px; color: var(--dim); }
+.cp b { color: #ff9a3c; font-size: 15px; }
+.battle-log #battle-log { max-height: 110px; overflow-y: auto; font-size: 12px; }
+.battle-log .log-line { padding: 1px 0; }
+.log-line.good { color: var(--exp); }
+.log-line.bad { color: var(--red); }
+.log-line.gold { color: var(--gold); }
+.stat-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #3a4bb0; }
+.stat-row:last-child { border-bottom: 0; }
+.stat-icon { font-size: 22px; width: 30px; text-align: center; }
+.stat-main { flex: 1; min-width: 0; }
+.stat-main b { color: var(--gold); }
+.stat-row .btn.small-btn { min-width: 108px; }
+.multi-buy { display: flex; gap: 4px; margin: 6px 0; }
+
+#scene { height: 230px; }
+
+/* ---------- PC: two columns like the reference ---------- */
+@media (min-width: 960px) {
+  #app { max-width: 1520px; padding: 16px 24px 24px; }
+  .game { display: grid; grid-template-columns: minmax(0, 1fr) 460px; grid-template-rows: auto 1fr; gap: 0 16px; align-items: start; }
+  .game .topbar { grid-column: 1 / -1; margin-top: 0; }
+  .topbar .brand { display: flex; flex-direction: column; padding-right: 12px; border-right: 2px solid #3a4bb0; }
+  .topbar .brand b { font-size: 26px; color: #6ec3ff; text-shadow: 2px 2px 0 #000; letter-spacing: 1px; }
+  .topbar .brand span { font-size: 12px; color: var(--dim); }
+  .top-stats .gold { font-size: 20px; }
+  .cp b { font-size: 20px; }
+  .col-left .window:first-child { margin-top: 0; }
+  #scene { height: min(560px, calc(100vh - 330px)); min-height: 380px; }
+  .battle-log #battle-log { max-height: 130px; }
+  .col-right { position: sticky; top: 12px; }
+  .col-right .tabs { flex-wrap: nowrap; }
+  .col-right .tab { flex: 1 1 0; font-size: 12px; padding: 10px 0; }
+  .col-right .panel { max-height: calc(100vh - 170px); overflow-y: auto; margin-top: 8px; }
+  .boss-btn { top: 14px; right: 14px; font-size: 18px; padding: 12px 22px; }
+}
+
+.lms-sub { display: flex; gap: 4px; margin-top: 6px; }
+.lms-sub input { flex: 1; min-width: 0; font: inherit; font-size: 11px; padding: 6px; background: #000; color: var(--ink); border: 2px solid #3a4bb0; border-radius: 4px; }
+.topbar .row { flex-wrap: wrap; row-gap: 2px; }
+.topbar .hero-name, .top-stats .gold, .cp { white-space: nowrap; }
