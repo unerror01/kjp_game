@@ -5,28 +5,22 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: [CHOOSE: Godot 4 / Unity / Unreal Engine 5]
-- **Language**: [CHOOSE: GDScript / C# / C++ / Blueprint]
+- **Engine**: 없음 — 순수 웹 스택 (게임 엔진 미사용; CCGS 엔진 도구 비적용)
+- **Language**: JavaScript (프론트엔드 + Vercel 서버리스 API)
+- **Platform**: 모바일 웹 우선, PC 웹 지원
+- **Hosting / Backend**: Vercel (서버리스 함수: api/assignments.js, api/quests.js)
 - **Version Control**: Git with trunk-based development
-- **Build System**: [SPECIFY after choosing engine]
-- **Asset Pipeline**: [SPECIFY after choosing engine]
+- **Build System**: [미정 — 프론트엔드 프레임워크 결정 후 기록]
+- **Asset Pipeline**: [미정 — 64x64 도트 PNG 스프라이트 기준]
 
-> **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
-> dedicated sub-specialists. Use the set matching your engine.
+> **Note**: This project uses no game engine, so `engine.name` in `project.yaml`
+> stays unset on purpose. The Godot/Unity/Unreal specialist agents, engine
+> reference docs, `/test-setup`, asset scans and the engine run-and-observe
+> procedure do not apply. Design, production and review skills still do.
 
 ## Project Structure
 
 @.claude/docs/directory-structure.md
-
-## Engine Version Reference
-
-<!-- ENGINE-REFERENCE-IMPORT: the line below is engine-specific. /setup-engine
-     rewrites it to @docs/engine-reference/<engine>/VERSION.md for the chosen
-     engine, so a Unity or Unreal project stops loading the Godot reference every
-     session. It defaults to Godot (the template's example engine); skills that
-     need the pinned version read docs/engine-reference/<engine>/VERSION.md on
-     demand regardless of this import. -->
-@docs/engine-reference/godot/VERSION.md
 
 
 ## Technical Preferences
