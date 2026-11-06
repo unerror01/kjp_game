@@ -184,7 +184,7 @@ window.GAME_DATA = {
    * nothing is sent to a server. Set exportUrl to the real 코스모스 export page.
    */
   lms: {
-    exportUrl: '',
+    exportUrl: 'https://lms.inu.ac.kr/calendar/export.php',
     rewardGold: 400,
     rewardExp: 120
   },
