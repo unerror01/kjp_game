@@ -38,8 +38,9 @@ window.GAME_DATA = {
 
   /**
    * Rounds and combat math. A round is `mobsPerRound` mobs; every `bossEvery`-th
-   * round is a single boss with `bossHpMult` × mob HP and a time limit. Failing
-   * the timer drops you back one round.
+   * round is a boss gate: you keep farming normal mobs there until you press
+   * "보스 도전". The boss has `bossHpMult` × mob HP and a time limit; losing (timer
+   * or hero HP 0) sends you back to farming at the gate.
    */
   combat: {
     mobsPerRound: 3,
@@ -49,7 +50,14 @@ window.GAME_DATA = {
     bossHpMult: 20,
     bossTimeLimit: 30,       // seconds
     atkBase: 10,
-    atkPerLevel: 0.12        // +12% attack per level above 1
+    atkPerLevel: 0.12,       // +12% attack per level above 1
+    heroHpBase: 200,
+    heroHpPerLevel: 0.25,    // +25% max HP per level above 1
+    heroRegenPerSec: 0.04,   // fraction of max HP regained per second while walking
+    respawnSec: 3,
+    mobAtkBase: 6,           // damage per mob attack at round 1 (grows like HP)
+    mobAtkInterval: 1.0,     // s between mob attacks
+    bossAtkMult: 1.5
   },
 
   /**
@@ -64,34 +72,34 @@ window.GAME_DATA = {
     tierCostMult: [1, 2.5, 6],
     byClass: {
       insider: [
-        { id: 'flag',    name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
-        { id: 'groupcall', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
-        { id: 'insta',   name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
+        { id: 'flag', fx: '🚩', name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
+        { id: 'groupcall', fx: '💬', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
+        { id: 'insta', fx: '🎉', name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
       ],
       hermit: [
-        { id: 'dagger',  name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
-        { id: 'shadow',  name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
-        { id: 'midnight', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
+        { id: 'dagger', fx: '🗡️', name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
+        { id: 'shadow', fx: '🌙', name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
+        { id: 'midnight', fx: '🌑', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
       ],
       berserker: [
-        { id: 'pencil',  name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
-        { id: 'cram',    name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
-        { id: 'deadline', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
+        { id: 'pencil', fx: '✏️', name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
+        { id: 'cram', fx: '⚡', name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
+        { id: 'deadline', fx: '🔥', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
       ],
       planner: [
-        { id: 'shield',  name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
-        { id: 'checklist', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
-        { id: 'timeline', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
+        { id: 'shield', fx: '🛡️', name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
+        { id: 'checklist', fx: '✅', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
+        { id: 'timeline', fx: '⏰', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
       ],
       foodie: [
-        { id: 'tray',    name: '식판 던지기',   unlock: 1,  type: 'nuke',  mult: 3,   cd: 4.5, desc: '식판 투척' },
-        { id: 'soup',    name: '뜨거운 국밥',   unlock: 5,  type: 'multi', hits: 6, mult: 1.1, cd: 11, desc: '펄펄 끓는 국물 세례' },
-        { id: 'feast',   name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
+        { id: 'tray', fx: '🍱', name: '식판 던지기',   unlock: 1,  type: 'nuke',  mult: 3,   cd: 4.5, desc: '식판 투척' },
+        { id: 'soup', fx: '🍲', name: '뜨거운 국밥',   unlock: 5,  type: 'multi', hits: 6, mult: 1.1, cd: 11, desc: '펄펄 끓는 국물 세례' },
+        { id: 'feast', fx: '🍚', name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
       ],
       rogue: [
-        { id: 'dash',    name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
-        { id: 'clones',  name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
-        { id: 'comet',   name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
+        { id: 'dash', fx: '💨', name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
+        { id: 'clones', fx: '👤', name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
+        { id: 'comet', fx: '☄️', name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
       ]
     }
   },
@@ -201,6 +209,7 @@ window.GAME_DATA = {
     berserker: {
       name: '벼락치기 유니', role: '버서커', sprite: 'berserker_1.png',
       frames: ['berserker_1.png', 'berserker_2.png', 'berserker_3.png', 'berserker_4.png'],
+      frameUnlocks: [1, 5, 10, 20],  // sprite changes as skills unlock (Lv20: awakened)
       skill: '데드라인의 지배자', desc: '24시간 내 마감 퀘스트가 있으면 경험치·골드 +50%',
       deadlineHours: 24, deadlineBonus: 0.50
     },

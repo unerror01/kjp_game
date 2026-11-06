@@ -83,8 +83,11 @@
     let mob = null, gap = 60;
     let hitT = 0, lunge = 0, haste = 0, hasteMult = 1, bossT = 0, castLabel = null;
     const cooldowns = {};       // skill id -> seconds left
-    const pendingHits = [];     // { at, dmg } queued multi-hit damage
+    const pendingHits = [];     // { at, dmg, fx } queued multi-hit damage
+    const projectiles = [];     // { fx, x0, y0, t, dur, dmg } flying nuke skills
+    const bursts = [];          // { fx, x, y, life, max, size, ring } hit effects
     const floats = [];
+    let heroHp = null, down = 0, mobAtkT = 0, banner = null, shakeT = 0;
 
     function resize() {
       dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -97,8 +100,10 @@
       const m = opts.nextMob(); // { def, boss, hp }
       mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
               size: m.boss ? D.bossSize : D.mobSize };
+      mob.atk = m.atk;
+      mobAtkT = 0;
       bossT = m.boss ? opts.data.combat.bossTimeLimit : 0;
-      if (m.boss) float('⚠ BOSS ⚠', W / 2, 60, '#ff5a6a', true);
+      if (m.boss) { banner = { name: m.def.name, life: 2.4 }; shakeT = 0.5; }
     }
 
     function fmtN(n) { return Math.floor(n).toLocaleString('ko-KR'); }
@@ -110,8 +115,26 @@
       if (mob.hp <= 0) kill();
     }
 
+    function clearAttacks() { pendingHits.length = 0; projectiles.length = 0; }
+
+    function burst(fx, x, y, size, ring) { bursts.push({ fx, x, y, size, ring, life: 0.45, max: 0.45 }); }
+
+    function mobCenter() { return { x: mob.x + mob.size / 2, y: H - 34 - mob.size / 2 }; }
+
+    /** Hero HP hit 0: lose the fight, respawn after a short stun. */
+    function heroDown() {
+      down = opts.data.combat.respawnSec;
+      clearAttacks();
+      float('기절…', D.heroX + D.heroSize / 2, H - 60 - D.heroSize, '#ff5a6a', true);
+      if (mob && mob.dying <= 0) {
+        if (mob.boss) { opts.onBossFail(mob); float('보스전 패배…', W / 2, 80, '#ff5a6a', true); }
+        else opts.onHeroDown(mob);
+        mob.dying = 0.5; mob.fled = true;
+      }
+    }
+
     function kill() {
-      mob.hp = 0; mob.dying = 0.5; pendingHits.length = 0;
+      mob.hp = 0; mob.dying = 0.5; clearAttacks();
       const r = opts.onKill(mob);
       const cx = mob.x + mob.size / 2, top = H - 44 - mob.size;
       float('+' + fmtN(r.gold) + ' G', cx, top - 4, '#ffd84a', true);
@@ -130,8 +153,14 @@
         castLabel = { text: s.name, life: 1 };
         lunge = 0.2;
         const r = opts.castSkill(s.id);
-        if (r.haste) { haste = r.haste.dur; hasteMult = r.haste.mult; }
-        r.hits.forEach((d, i) => pendingHits.push({ at: i * 0.09, dmg: d }));
+        const hx = D.heroX + D.heroSize, hy = H - 34 - D.heroSize / 2;
+        if (r.haste) { haste = r.haste.dur; hasteMult = r.haste.mult; burst(s.fx, D.heroX + D.heroSize / 2, hy, 46, true); }
+        if (s.type === 'nuke') {
+          const c = mobCenter();
+          projectiles.push({ fx: s.fx, x0: hx, y0: hy, x1: c.x, y1: c.y, t: 0, dur: 0.28, dmg: r.hits[0] });
+        } else {
+          r.hits.forEach((d, i) => pendingHits.push({ at: 0.08 + i * 0.09, dmg: d, fx: s.fx }));
+        }
         break; // one skill per frame
       }
     }
@@ -241,50 +270,88 @@
     function frame(ts) {
       const dt = Math.min(0.05, (ts - last) / 1000 || 0);
       last = ts; t += dt;
-      const walking = !mob || mob.x - D.heroX > D.engageDistance || mob.dying > 0;
+      const C = opts.data.combat;
+      const maxHp = opts.heroMaxHp();
+      if (heroHp === null || heroHp > maxHp) heroHp = maxHp;
+      const engaged = !!(mob && mob.dying <= 0 && mob.x - D.heroX <= D.engageDistance);
+      const walking = !engaged && down <= 0;
 
       // world update
-      if (walking && !(mob && mob.dying > 0)) {
+      if (down > 0) {
+        down -= dt;
+        if (down <= 0) { heroHp = maxHp; float('부활!', D.heroX + D.heroSize / 2, H - 60 - D.heroSize, '#5af0a8', true); }
+      } else if (walking && !(mob && mob.dying > 0)) {
         scroll += D.walkSpeed * dt;
+        heroHp = Math.min(maxHp, heroHp + maxHp * C.heroRegenPerSec * dt);
         if (mob) mob.x -= D.walkSpeed * dt;
         else if ((gap -= D.walkSpeed * dt) <= 0) spawn();
-      } else if (mob && mob.dying <= 0) {
+      } else if (engaged) {
         hitT += dt * (haste > 0 ? hasteMult : 1);
         if (hitT >= D.hitInterval) {
           hitT = 0; lunge = 0.14;
           damage(opts.heroAtk() * (0.9 + Math.random() * 0.2), false);
         }
+        // mob hits back
+        if (mob && mob.dying <= 0) {
+          mobAtkT += dt;
+          if (mobAtkT >= C.mobAtkInterval) {
+            mobAtkT = 0; mob.lunge = 0.15;
+            const d = mob.atk * (0.85 + Math.random() * 0.3);
+            heroHp -= d;
+            float('-' + fmtN(d), D.heroX + D.heroSize / 2, H - 44 - D.heroSize, '#ff5a6a', false);
+            if (heroHp <= 0) { heroHp = 0; heroDown(); }
+          }
+        }
         if (mob && mob.boss && mob.dying <= 0) {
           bossT -= dt;
           if (bossT <= 0) {
             opts.onBossFail(mob);
-            float('시간 초과… ROUND 후퇴', W / 2, 70, '#ff5a6a', true);
-            mob.dying = 0.5; pendingHits.length = 0;
+            float('시간 초과… 보스 대기로 복귀', W / 2, 80, '#ff5a6a', true);
+            mob.dying = 0.5; mob.fled = true; clearAttacks();
           }
         }
       }
-      // queued skill hits
+      // flying nukes
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.t += dt;
+        if (p.t >= p.dur) {
+          projectiles.splice(i, 1);
+          if (mob && mob.dying <= 0) { const c = mobCenter(); burst(p.fx, c.x, c.y, 64, true); shakeT = 0.15; }
+          damage(p.dmg, true);
+        }
+      }
+      // queued multi hits
       for (const h of pendingHits) h.at -= dt;
       const ready = pendingHits.filter(h => h.at <= 0);
       for (const h of ready) pendingHits.splice(pendingHits.indexOf(h), 1);
-      for (const h of ready) damage(h.dmg, true);
-      castSkills(dt);
+      for (const h of ready) {
+        if (mob && mob.dying <= 0) {
+          const c = mobCenter();
+          burst(h.fx, c.x + (Math.random() - 0.5) * mob.size * 0.6, c.y + (Math.random() - 0.5) * mob.size * 0.5, 30, false);
+        }
+        damage(h.dmg, true);
+      }
+      if (down <= 0) castSkills(dt);
       haste = Math.max(0, haste - dt);
       if (mob && mob.dying > 0) {
         mob.dying -= dt;
+        if (mob.fled) mob.x += 160 * dt;
         if (mob.dying <= 0) { mob = null; gap = 40 + Math.random() * 60; }
       }
-      if (mob) mob.flash = Math.max(0, mob.flash - dt);
+      if (mob) { mob.flash = Math.max(0, mob.flash - dt); mob.lunge = Math.max(0, (mob.lunge || 0) - dt); }
       lunge = Math.max(0, lunge - dt);
+      shakeT = Math.max(0, shakeT - dt);
 
       // draw
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const sx = shakeT > 0 ? (Math.random() - 0.5) * 8 : 0, sy = shakeT > 0 ? (Math.random() - 0.5) * 6 : 0;
+      ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
       const night = sky();
       farLayer(night);
       nearLayer(night);
       ground();
 
-      const fighting = !walking;
+      const fighting = engaged;
       const bob = walking ? Math.abs(Math.sin(t * 9)) * 5 : 0;
       const hx = D.heroX + (lunge > 0 ? 12 : 0);
       const hs = D.heroSize;
@@ -294,7 +361,18 @@
         ctx.fillStyle = 'rgba(255,216,74,' + (0.25 + 0.15 * Math.sin(t * 20)) + ')';
         ctx.beginPath(); ctx.ellipse(hx + hs / 2, H - 34 - hs / 2, hs * 0.55, hs * 0.6, 0, 0, Math.PI * 2); ctx.fill();
       }
-      drawSprite(hf, hx, H - 34 - hs - bob, hs, 1, 0);
+      const blink = down > 0 ? (Math.floor(t * 10) % 2 ? 0.25 : 0.6) : 1;
+      drawSprite(hf, hx, H - 34 - hs - bob, hs, blink, 0);
+      // hero HP bar
+      {
+        const bw = hs * 0.8, bx = hx + hs * 0.1, by = H - 30 - hs - 8;
+        ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 7);
+        const f = maxHp ? heroHp / maxHp : 0;
+        ctx.fillStyle = f > 0.5 ? '#3ee07a' : f > 0.25 ? '#ffd84a' : '#ff5a6a'; ctx.fillRect(bx, by, bw * f, 5);
+        ctx.font = '9px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#000';
+        ctx.fillText('HP ' + fmtN(heroHp) + '/' + fmtN(maxHp), bx + bw / 2 + 1, by - 2);
+        ctx.fillStyle = '#fff'; ctx.fillText('HP ' + fmtN(heroHp) + '/' + fmtN(maxHp), bx + bw / 2, by - 3);
+      }
       if (fighting && lunge > 0) {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(hx + hs - 4, H - 34 - hs / 2, 18, -0.9, 0.9); ctx.stroke();
@@ -306,7 +384,7 @@
         const alpha = mob.dying > 0 ? Math.max(0, mob.dying / 0.5) : 1;
         const my = H - 34 - mob.size + (Math.sin(t * 3) * 2);
         shadow(mob.x + mob.size / 2, mob.size * 0.6);
-        drawSprite(sp, mob.x + shake, my, mob.size, alpha, mob.flash, mob.boss ? 0 : mob.def.hue);
+        drawSprite(sp, mob.x + shake - (mob.lunge > 0 ? 10 : 0), my, mob.size, alpha, mob.flash, mob.boss ? 0 : mob.def.hue);
         if (mob.dying <= 0 && !mob.boss) {
           const bw = mob.size * 0.8, bx = mob.x + mob.size * 0.1, by = my - 4;
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 7);
@@ -327,6 +405,34 @@
           ctx.fillStyle = '#000'; ctx.fillRect(bx - 2, by + 17, bw + 4, 6);
           ctx.fillStyle = bossT < 8 ? '#ff5a6a' : '#ffd84a'; ctx.fillRect(bx, by + 18, bw * Math.max(0, bossT) / limit, 4);
         }
+      }
+
+      // skill effects
+      for (const p of projectiles) {
+        const k = p.t / p.dur;
+        const x = p.x0 + (p.x1 - p.x0) * k, y = p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * 30;
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = 0.35; ctx.font = '26px sans-serif'; ctx.fillText(p.fx, x - 14, y + 8);
+        ctx.globalAlpha = 1; ctx.font = '34px sans-serif'; ctx.fillText(p.fx, x, y + 12);
+      }
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        const b = bursts[i];
+        b.life -= dt;
+        if (b.life <= 0) { bursts.splice(i, 1); continue; }
+        const k = 1 - b.life / b.max;
+        ctx.globalAlpha = 1 - k;
+        if (b.ring) {
+          ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 10 + k * b.size, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 4 + k * b.size * 0.6, 0, Math.PI * 2); ctx.stroke();
+        } else {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(b.x - 14, b.y - 14 + k * 4); ctx.lineTo(b.x + 14, b.y + 14 - k * 4); ctx.stroke();
+        }
+        ctx.font = Math.round(b.size * (0.6 + k * 0.6)) + 'px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(b.fx, b.x, b.y + b.size * 0.25);
+        ctx.globalAlpha = 1;
       }
 
       // skill bar (bottom right, over the path)
@@ -370,13 +476,35 @@
         ctx.globalAlpha = 1;
       }
 
+      // BOSS banner
+      if (banner) {
+        banner.life -= dt;
+        if (banner.life <= 0) banner = null;
+        else {
+          ctx.globalAlpha = Math.max(0, Math.min(1, banner.life * 2, (2.4 - banner.life) * 6));
+          ctx.fillStyle = '#000c'; ctx.fillRect(0, H / 2 - 44, W, 76);
+          ctx.fillStyle = '#c8102e';
+          for (let x = -40 + (t * 80) % 40; x < W; x += 40) { ctx.fillRect(x, H / 2 - 44, 20, 6); ctx.fillRect(x + 20, H / 2 + 26, 20, 6); }
+          const pulse = 1 + Math.sin(t * 12) * 0.05;
+          ctx.save(); ctx.translate(W / 2, H / 2 - 6); ctx.scale(pulse, pulse);
+          ctx.font = 'bold 30px Galmuri11, sans-serif'; ctx.textAlign = 'center';
+          ctx.fillStyle = '#000'; ctx.fillText('⚠ BOSS 등장 ⚠', 2, 2);
+          ctx.fillStyle = '#ff3a50'; ctx.fillText('⚠ BOSS 등장 ⚠', 0, 0);
+          ctx.restore();
+          ctx.font = 'bold 14px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd84a';
+          ctx.fillText('👑 ' + banner.name, W / 2, H / 2 + 18);
+          ctx.globalAlpha = 1;
+        }
+      }
+
       // round HUD
       const rd = opts.getRound();
       ctx.font = 'bold 11px Galmuri11, sans-serif'; ctx.textAlign = 'left';
       ctx.fillStyle = '#000a'; ctx.fillRect(6, 6, 96, 32);
       ctx.fillStyle = rd.isBoss ? '#ff5a6a' : '#ffd84a'; ctx.fillText('ROUND ' + rd.round + (rd.isBoss ? ' BOSS' : ''), 12, 19);
       ctx.font = '10px Galmuri11, sans-serif'; ctx.fillStyle = '#fff';
-      ctx.fillText(rd.isBoss ? '제한 ' + opts.data.combat.bossTimeLimit + '초' : '처치 ' + rd.roundKills + ' / ' + rd.count, 12, 32);
+      const fightingBoss = mob && mob.boss && mob.dying <= 0;
+      ctx.fillText(rd.isBoss ? (fightingBoss ? '제한 ' + Math.ceil(Math.max(0, bossT)) + '초' : '보스 대기 중') : '처치 ' + rd.roundKills + ' / ' + rd.count, 12, 32);
 
       raf = requestAnimationFrame(frame);
     }
@@ -396,7 +524,13 @@
       start() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } },
       stop() { cancelAnimationFrame(raf); raf = 0; },
       /** Drop the current mob (e.g. after a reset). */
-      reset() { mob = null; gap = 60; pendingHits.length = 0; for (const k in cooldowns) delete cooldowns[k]; haste = 0; }
+      reset() { mob = null; gap = 60; clearAttacks(); for (const k in cooldowns) delete cooldowns[k]; haste = 0; heroHp = null; down = 0; banner = null; },
+      /** Player pressed "보스 도전": drop the current mob so the boss spawns next. */
+      challenge() { if (mob && !mob.boss && mob.dying <= 0) { mob = null; clearAttacks(); } gap = 10; },
+      /** True while a boss is on screen and alive. */
+      isBossActive() { return !!(mob && mob.boss && mob.dying <= 0); },
+      /** True while the hero is stunned. */
+      isDown() { return down > 0; }
     };
   }
 

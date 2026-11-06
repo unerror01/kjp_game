@@ -362,11 +362,33 @@
     return Math.ceil(isBoss ? hp * c.bossHpMult : hp);
   }
 
-  /** Records a kill. Returns { roundCleared, round } after the update. */
-  function recordKill(state, data) {
-    const info = roundInfo(state.round || 1, data);
-    state.roundKills = (state.roundKills || 0) + 1;
+  /** Hero max HP. */
+  function heroMaxHp(state, data) {
+    const c = data.combat;
+    return Math.floor(c.heroHpBase * (1 + c.heroHpPerLevel * (state.level - 1)));
+  }
+
+  /** Damage one mob attack deals in `round`. */
+  function mobAtk(round, isBoss, data) {
+    const c = data.combat;
+    const a = c.mobAtkBase * Math.pow(c.mobHpGrowth, round - 1);
+    return isBoss ? a * c.bossAtkMult : a;
+  }
+
+  /** True when the current round is a boss gate (boss round not yet cleared). */
+  function atBossGate(state, data) {
+    return roundInfo(state.round || 1, data).isBoss;
+  }
+
+  /**
+   * Records a kill. Normal mobs killed at a boss gate do not advance the round.
+   * Returns { roundCleared, round }.
+   */
+  function recordKill(state, data, isBoss) {
     state.kills = (state.kills || 0) + 1;
+    const info = roundInfo(state.round || 1, data);
+    if (info.isBoss && !isBoss) return { roundCleared: false, round: state.round || 1 };
+    state.roundKills = (state.roundKills || 0) + 1;
     if (state.roundKills >= info.count) {
       state.round = (state.round || 1) + 1;
       state.roundKills = 0;
@@ -375,9 +397,13 @@
     return { roundCleared: false, round: state.round };
   }
 
-  /** Boss timer ran out: drop back one round. */
+  /** Boss lost (timer or hero down): stay at the gate and farm. */
   function failBoss(state) {
-    state.round = Math.max(1, (state.round || 1) - 1);
+    state.roundKills = 0;
+  }
+
+  /** Hero went down to a normal mob: current round progress resets. */
+  function heroDown(state) {
     state.roundKills = 0;
   }
 
@@ -423,6 +449,7 @@
   }
 
   const api = {
+    heroMaxHp, mobAtk, atBossGate, heroDown,
     relicCount, relicBonus, pullRelics, offlineEfficiency,
     heroAtk, roundInfo, mobHp, recordKill, failBoss, classSkills, skillUpgradeCost, upgradeSkill,
     skillHitDamage, skillHaste,

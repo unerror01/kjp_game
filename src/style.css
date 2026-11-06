@@ -76,7 +76,13 @@ body {
 .skill-box { background: #0a1240; border: 2px dashed var(--gold); padding: 10px; margin: 12px 0; text-align: left; }
 .skill-box b { color: var(--gold); }
 
-.scene-win { padding: 0; overflow: hidden; }
+.scene-win { padding: 0; overflow: hidden; position: relative; }
+.boss-btn {
+  position: absolute; top: 8px; right: 8px; font: inherit; font-size: 13px; font-weight: bold;
+  color: #fff; background: #c8102e; border: 2px solid #ffd84a; border-radius: 4px;
+  padding: 8px 12px; cursor: pointer; box-shadow: 0 0 0 2px #000; animation: bossPulse 1s infinite;
+}
+@keyframes bossPulse { 50% { transform: scale(1.08); box-shadow: 0 0 12px #ff3a50, 0 0 0 2px #000; } }
 #scene { display: block; width: 100%; image-rendering: pixelated; }
 .hero { display: flex; gap: 12px; align-items: center; }
 .hero-info { flex: 1; min-width: 0; }

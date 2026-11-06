@@ -247,7 +247,20 @@
     }
     for (const b of document.querySelectorAll('#tab-skill [data-cost], #tab-relic [data-cost]')) b.disabled = state.gold < +b.dataset.cost;
     if (Math.floor(sessionSec) % 5 === 0) save();
+    updateBossButton();
   }
+
+  /** "보스 도전" shows only at a boss gate when no boss fight is running. */
+  function updateBossButton() {
+    const show = state && scene && L.atBossGate(state, D) && !bossChallenge && !scene.isBossActive();
+    $('btn-boss').classList.toggle('hidden', !show);
+  }
+  $('btn-boss').onclick = () => {
+    if (!state || !scene || scene.isDown()) { toast('기절 중에는 도전할 수 없어요'); return; }
+    bossChallenge = true;
+    scene.challenge();
+    updateBossButton();
+  };
   function start() {
     stop();
     lastFrame = Date.now();
@@ -260,31 +273,52 @@
   function onKill(mob) {
     const bossMult = D.battle.bossMult * (1 + L.relicBonus(state, D).bossReward);
     const r = L.payout(state, D, mob.boss ? bossMult : 1);
-    const k = L.recordKill(state, D);
-    if (r.levels) { toast('🎉 레벨 업! Lv.' + state.level); renderSkills(); }
-    if (mob.boss) toast('👑 ' + mob.def.name + ' 처치! 보상 x' + bossMult);
+    const k = L.recordKill(state, D, mob.boss);
+    if (mob.boss) { bossChallenge = false; toast('👑 ' + mob.def.name + ' 처치! 보상 x' + bossMult); }
+    if (r.levels) { toast('🎉 레벨 업! Lv.' + state.level); renderSkills(); updateHeroSprite(); }
     save();
     renderHero();
     return Object.assign(r, k);
   }
+
+  /** Hero sprite frames; classes with frameUnlocks change look as skills unlock. */
+  function heroFrameUrls() {
+    const c = D.classes[state.classId];
+    if (!c.frameUnlocks) return [D.spriteBase + c.sprite];
+    const idx = c.frameUnlocks.filter(lv => state.level >= lv).length - 1;
+    return [D.spriteBase + c.frames[Math.max(0, idx)]];
+  }
+  let heroUrlKey = '';
+  function updateHeroSprite() {
+    const urls = heroFrameUrls();
+    if (urls.join() === heroUrlKey || !scene) return;
+    if (heroUrlKey) toast('✨ 외형 변화!');
+    heroUrlKey = urls.join();
+    scene.setHero(urls);
+  }
+
+  let bossChallenge = false;
   const sceneOpts = {
     data: D,
     onKill,
-    onBossFail: () => { L.failBoss(state); save(); toast('보스에게 패배… 강화하고 다시 도전!'); },
+    onBossFail: () => { bossChallenge = false; L.failBoss(state); save(); toast('보스에게 패배… 강화하고 다시 도전!'); },
+    onHeroDown: () => { L.heroDown(state); save(); toast('기절… 라운드 진행이 초기화됐어요'); },
+    heroMaxHp: () => L.heroMaxHp(state, D),
     nextMob: () => {
       const round = state.round || 1;
       const info = L.roundInfo(round, D);
-      const pool = info.isBoss ? D.battle.bosses : D.battle.mobs;
-      const def = info.isBoss ? pool[(Math.floor(round / D.combat.bossEvery) - 1) % pool.length]
-                              : pool[Math.floor(Math.random() * pool.length)];
-      return { def, boss: info.isBoss, hp: L.mobHp(round, info.isBoss, D) };
+      const boss = info.isBoss && bossChallenge;
+      const pool = boss ? D.battle.bosses : D.battle.mobs;
+      const def = boss ? pool[(Math.floor(round / D.combat.bossEvery) - 1) % pool.length]
+                       : pool[Math.floor(Math.random() * pool.length)];
+      return { def, boss, hp: L.mobHp(round, boss, D), atk: L.mobAtk(round, boss, D) };
     },
     getRound: () => {
       const round = state.round || 1;
       return Object.assign({ round, roundKills: state.roundKills || 0 }, L.roundInfo(round, D));
     },
     heroAtk: () => L.heroAtk(state, D),
-    skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
+    skills: () => L.classSkills(state, D).map(s => ({ id: s.def.id, name: s.def.name, fx: s.def.fx, type: s.def.type, cd: s.def.cd, unlock: s.def.unlock, unlocked: s.unlocked, level: s.level })),
     castSkill: (id) => {
       const def = D.skills.byClass[state.classId].find(s => s.id === id);
       const dmg = L.skillHitDamage(state, id, D);
@@ -318,7 +352,9 @@
     const c = D.classes[state.classId];
     if (!scene) scene = window.Scene.create($('scene'), sceneOpts);
     else scene.reset();
-    scene.setHero((c.frames || [c.sprite]).map(f => D.spriteBase + f));
+    bossChallenge = false;
+    heroUrlKey = '';
+    updateHeroSprite();
     scene.start();
     renderAll();
     start();
