@@ -35,8 +35,9 @@
 
     <!-- Main game -->
     <section id="screen-game" class="screen hidden">
+      <div class="window scene-win"><canvas id="scene"></canvas></div>
       <div class="window hero">
-        <div class="sprite-frame"><img id="hero-img" alt=""></div>
+        <img id="hero-img" alt="" class="hidden">
         <div class="hero-info">
           <div class="hero-name" id="hero-name"></div>
           <div class="row"><span class="lv" id="hero-lv"></span><span class="gold" id="hero-gold"></span></div>
@@ -72,6 +73,7 @@
 
   <script src="data.js"></script>
   <script src="logic.js"></script>
+  <script src="scene.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

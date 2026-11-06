@@ -7,6 +7,35 @@ window.GAME_DATA = {
   spriteBase: '../assets/sprites/classes/',
   tickMs: 1000,
 
+  /**
+   * Campus battle scene. Idle gains bank up while walking and pay out when a mob
+   * dies, so rewards are visible. Bosses pay `bossMult` times the bank.
+   */
+  battle: {
+    mobBase: '../assets/sprites/mobs/',
+    sceneHeight: 210,
+    heroX: 64,
+    heroSize: 84,
+    mobSize: 84,
+    bossSize: 112,
+    walkSpeed: 120,         // px/s ground scroll
+    engageDistance: 74,     // px between hero and mob when the fight starts
+    mobHits: 4,
+    bossHits: 8,
+    hitInterval: 0.35,      // s between hero attacks
+    bossEvery: 8,           // every Nth mob is a boss
+    bossMult: 3,
+    mobs: [
+      { name: '무임승차 슬라임', sprite: 'slime.png' }
+    ],
+    bosses: [
+      { name: 'F폭격 교수',      sprite: 'professor.png' },
+      { name: '영어 회화 마왕',  sprite: 'english.png' },
+      { name: '이별의 망령',     sprite: 'breakup.png' },
+      { name: '입영통지 헌병',   sprite: 'army.png' }
+    ]
+  },
+
   /** Idle farming (MVP 2). Rates are per second at level 1 with no bonuses. */
   idle: {
     baseExpPerSec: 1,

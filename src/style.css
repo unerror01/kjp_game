@@ -76,6 +76,8 @@ body {
 .skill-box { background: #0a1240; border: 2px dashed var(--gold); padding: 10px; margin: 12px 0; text-align: left; }
 .skill-box b { color: var(--gold); }
 
+.scene-win { padding: 0; overflow: hidden; }
+#scene { display: block; width: 100%; image-rendering: pixelated; }
 .hero { display: flex; gap: 12px; align-items: center; }
 .hero-info { flex: 1; min-width: 0; }
 .hero-name { font-size: 16px; }

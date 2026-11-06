@@ -111,7 +111,6 @@
     const s = Math.floor(sessionSec);
     $('study-time').textContent = String(Math.floor(s / 3600)).padStart(2, '0') + ':' +
       String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
-    if (c.frames) { berserkerFrame = (berserkerFrame + 1) % c.frames.length; $('hero-img').src = D.spriteBase + c.frames[berserkerFrame]; }
   }
 
   function renderEquip(flashSlot) {
@@ -187,7 +186,7 @@
       '<div class="skill-box" style="flex:1;margin:0"><b>[' + esc(c.skill) + ']</b><br>' + esc(c.desc) + '</div></div>' +
       '<table class="stat-table">' + rows.map(x => '<tr><td>' + x[0] + '</td><td>' + esc(x[1]) + '</td></tr>').join('') + '</table>' +
       '<button class="btn small-btn" id="btn-reset" style="margin-top:12px">처음부터 다시 (유니 테스트)</button>';
-    $('btn-reset').onclick = () => { if (confirm('진행 상황이 모두 사라집니다. 다시 시작할까요?')) { wipe(); state = null; stop(); startTest(); } };
+    $('btn-reset').onclick = () => { if (confirm('진행 상황이 모두 사라집니다. 다시 시작할까요?')) { wipe(); state = null; stop(); if (scene) scene.stop(); startTest(); } };
   }
 
   function renderAll() { renderHero(); renderEquip(); renderQuests(); renderMe(); }
@@ -201,10 +200,8 @@
     const now = Date.now();
     const dt = Math.min(5, (now - lastFrame) / 1000);
     lastFrame = now;
-    const before = state.level;
-    L.tick(state, D, dt, now);
+    L.accrue(state, D, dt, now); // paid out when the scene's mob dies
     sessionSec += dt;
-    if (state.level > before) toast('🎉 레벨 업! Lv.' + state.level);
     const stacks = L.comboStacks(state, D);
     if (stacks > lastStacks) { $('combo').classList.remove('pulse'); void $('combo').offsetWidth; $('combo').classList.add('pulse'); }
     lastStacks = stacks;
@@ -226,9 +223,24 @@
   }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
+  let scene = null;
+  /** Scene callback: a mob died, pay the banked study gains. */
+  function onKill(mob) {
+    const r = L.payout(state, D, mob.boss ? D.battle.bossMult : 1);
+    state.kills = (state.kills || 0) + 1;
+    if (r.levels) toast('🎉 레벨 업! Lv.' + state.level);
+    if (mob.boss) toast('👑 ' + mob.def.name + ' 처치! 보상 x' + D.battle.bossMult);
+    save();
+    renderHero();
+    return r;
+  }
+
   function enterGame(offlineReport) {
-    $('hero-img').src = sprite(state.classId);
     show('screen-game');
+    const c = D.classes[state.classId];
+    if (!scene) scene = window.Scene.create($('scene'), { data: D, onKill, getLevel: () => state.level, kills: state.kills || 0 });
+    scene.setHero((c.frames || [c.sprite]).map(f => D.spriteBase + f));
+    scene.start();
     renderAll();
     start();
     if (offlineReport && offlineReport.seconds) {

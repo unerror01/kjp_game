@@ -149,13 +149,44 @@
     return gained;
   }
 
-  /** Advances `seconds` of on-screen study. Mutates state; returns { exp, gold, levels }. */
+  /**
+   * Advances `seconds` of on-screen study into the bank (state.bank) without paying
+   * it out. Returns the { exp, gold } added. Paid by `payout` when a mob dies.
+   */
+  function accrue(state, data, seconds, now) {
+    const r = rates(state, data, now);
+    const exp = r.expPerSec * seconds;
+    const gold = r.goldPerSec * seconds;
+    if (!state.bank) state.bank = { exp: 0, gold: 0 };
+    state.bank.exp += exp;
+    state.bank.gold += gold;
+    advanceClock(state, seconds, now);
+    return { exp, gold };
+  }
+
+  /** Pays the bank times `mult` into gold/EXP and empties it. Returns { exp, gold, levels }. */
+  function payout(state, data, mult) {
+    const b = state.bank || { exp: 0, gold: 0 };
+    const gold = b.gold * mult;
+    const exp = b.exp * mult;
+    state.gold += gold;
+    const levels = addExp(state, exp, data);
+    state.bank = { exp: 0, gold: 0 };
+    return { exp, gold, levels };
+  }
+
+  /** Advances `seconds` of on-screen study and pays it at once. Returns { exp, gold, levels }. */
   function tick(state, data, seconds, now) {
     const r = rates(state, data, now);
     const exp = r.expPerSec * seconds;
     const gold = r.goldPerSec * seconds;
     state.gold += gold;
     const levels = addExp(state, exp, data);
+    advanceClock(state, seconds, now);
+    return { exp, gold, levels };
+  }
+
+  function advanceClock(state, seconds, now) {
     state.comboSeconds += seconds;
     state.totalStudySec += seconds;
     if (state.classId === 'rogue') {
@@ -164,7 +195,6 @@
       state.rogueUsedSec += seconds;
     }
     state.lastTick = now;
-    return { exp, gold, levels };
   }
 
   /** Away-time reward when the app reopens. Mutates state; returns gains and seconds counted. */
@@ -258,7 +288,7 @@
 
   const api = {
     HOUR, expToNext, rollLine, newState, potentialPct, equipBonus, skillModifiers, comboStacks,
-    rates, addExp, tick, applyOffline, breakCombo, upgradeCost, upgrade, rerollCost, reroll,
+    rates, addExp, tick, accrue, payout, applyOffline, breakCombo, upgradeCost, upgrade, rerollCost, reroll,
     questStatus, completeQuest, assignClass
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
