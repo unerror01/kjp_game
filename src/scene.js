@@ -12,8 +12,11 @@
    * background from the edges: low-saturation light/mid pixels (white or a
    * baked-in checkerboard) become transparent. Black outlines stop the fill.
    * Falls back to the raw image if the canvas is tainted (file://).
+   * With `trim`, empty margins are cut so the figure fills the box (wide source
+   * images such as the dragon and the soldier would otherwise look tiny).
    */
-  function loadSprite(url, size) {
+  function loadSprite(url, outSize, trim) {
+    const size = trim ? outSize * 2 : outSize; // work at 2× so the trimmed figure stays sharp
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -49,7 +52,7 @@
             if (y < size - 1) stack.push(p + size);
           }
           g.putImageData(d, 0, 0);
-          resolve(c);
+          resolve(trim ? trimToBox(c, px, size, outSize) : c);
         } catch (e) {
           resolve(img); // tainted canvas: draw as-is
         }
@@ -57,6 +60,22 @@
       img.onerror = () => resolve(null);
       img.src = url;
     });
+  }
+
+  /** Crops `c` (size×size, alpha in px) to its opaque bounding box, fits it into outSize, bottom-centred. */
+  function trimToBox(c, px, size, outSize) {
+    let x0 = size, y0 = size, x1 = -1, y1 = -1;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      if (px[(y * size + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    const o = document.createElement('canvas');
+    o.width = o.height = outSize;
+    if (x1 < 0) return o;
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1, k = Math.min(outSize / bw, outSize / bh);
+    const g = o.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(c, x0, y0, bw, bh, (outSize - bw * k) / 2, outSize - bh * k, bw * k, bh * k);
+    return o;
   }
 
   // ---------- deterministic campus layout ----------
@@ -115,7 +134,7 @@
     function spawn() {
       const m = opts.nextMob(); // { def, boss, hp }
       mob = { def: m.def, boss: m.boss, x: W + 40, hp: m.hp, max: m.hp, flash: 0, dying: 0,
-              size: m.boss ? D.bossSize : D.mobSize };
+              size: (m.boss ? D.bossSize : D.mobSize) * (m.def.scale || 1) };
       mob.atk = m.atk;
       mob.siege = m.siege || null;
       mobAtkT = 0;
@@ -147,6 +166,271 @@
       else { burst(fx, x, y, 44, false); spray(x, y, 22, 200, 1.6); shakeT = Math.max(shakeT, 0.06); }
     }
 
+    // ---------- skill-specific animations ----------
+    // Each anim(s, r, c) schedules visuals in `effects` and damage in `pendingHits`.
+    // s = skill (fx emoji, name), r.hits = per-hit damage, c = mob centre at cast.
+    const effects = [];         // { t, dur, draw(k, t) }
+    let heroHideT = 0, curHero = null;
+
+    function fxAdd(dur, draw) { effects.push({ t: 0, dur, draw }); }
+    function hitAt(at, dmg, big, fx, x, y) { pendingHits.push({ at, dmg, big, fx, x, y }); }
+    function heroCenter() { return { x: D.heroX + D.heroSize / 2, y: H - 34 - D.heroSize / 2 }; }
+    function emoji(ch, x, y, size, rot, alpha) {
+      ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha; ctx.translate(x, y); if (rot) ctx.rotate(rot);
+      ctx.font = Math.round(size) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(ch, 0, 0); ctx.restore();
+    }
+    function ghost(x, y, alpha, hue) { if (curHero) drawSprite(curHero, x, y, D.heroSize, alpha, 0, hue); }
+    function ring(x, y, r, color, w, alpha) {
+      ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    function slashLine(x0, y0, x1, y1, color, w, alpha) {
+      ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1, w / 3);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    const lerp = (a, b, k) => a + (b - a) * k;
+
+    const ANIMS = {
+      // ===== 초인싸 =====
+      /** 깃발 휘두르기: a giant flag sweeps in front of the hero. */
+      swing(s, r, c) {
+        const h = heroCenter();
+        fxAdd(0.4, (k) => {
+          const a = lerp(-1.6, 1.1, Math.min(1, k * 1.4)), len = 90;
+          const tx = h.x + 20 + Math.cos(a) * len, ty = h.y + Math.sin(a) * len;
+          ctx.globalAlpha = 0.35; ctx.strokeStyle = '#4aa8ff'; ctx.lineWidth = 18;
+          ctx.beginPath(); ctx.arc(h.x + 20, h.y, len, -1.6, a); ctx.stroke(); ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#e8ecff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(h.x + 20, h.y); ctx.lineTo(tx, ty); ctx.stroke();
+          emoji('🚩', tx, ty, 44, a + 1.6);
+        });
+        hitAt(0.22, r.hits[0], true, '⭐', c.x, c.y);
+      },
+      /** 단톡방 소환: chat bubbles pop around the mob, each one a hit. */
+      bubbles(s, r, c) {
+        const words = ['ㅋㅋ', '!!', 'ㄱㄱ', '@@', '출첵', '팀플?'];
+        r.hits.forEach((d, i) => {
+          const x = c.x + (Math.random() - 0.5) * 110, y = c.y - 30 - Math.random() * 60, at = 0.08 + i * 0.12, w = words[i % words.length];
+          fxAdd(at + 0.25, (k, t) => {
+            if (t < at - 0.12) return;
+            const g = Math.min(1, (t - (at - 0.12)) / 0.12), pop = t > at ? 1 - (t - at) / 0.13 : 1;
+            if (pop <= 0) return;
+            ctx.globalAlpha = pop; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#123a8c'; ctx.lineWidth = 3;
+            const bw = 46 * g, bh = 28 * g;
+            ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh); ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
+            ctx.beginPath(); ctx.moveTo(x - 6, y + bh / 2); ctx.lineTo(x, y + bh / 2 + 9 * g); ctx.lineTo(x + 6, y + bh / 2); ctx.fill();
+            ctx.fillStyle = '#123a8c'; ctx.font = 'bold ' + Math.round(13 * g) + 'px Galmuri11, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(w, x, y); ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = 1;
+          });
+          hitAt(at, d, false, '💬', x, y);
+        });
+      },
+      /** 인싸력 폭발: rainbow shockwaves from the hero and confetti everywhere. */
+      shockwave(s, r, c) {
+        const h = heroCenter();
+        fxAdd(0.8, (k) => {
+          ['#ff5a9a', '#ffd84a', '#4aa8ff'].forEach((col, i) => ring(h.x, h.y, (k - i * 0.1) * W * 1.1, col, 10 - i * 2, Math.max(0, 1 - k)));
+          if (k < 0.5) emoji('🎉', h.x, h.y - 50, 40 + k * 60, 0, 1 - k * 2);
+        });
+        for (let i = 0; i < 6; i++) spray(Math.random() * W, 20 + Math.random() * 60, 10, 160, 1.3);
+        flashT = 0.1;
+        hitAt(0.3, r.hits[0], true, '🎉', c.x, c.y);
+      },
+
+      // ===== 은둔형 =====
+      /** 노트북 단검: two daggers flung straight and fast. */
+      daggers(s, r, c) {
+        const h = heroCenter();
+        r.hits.forEach((d, i) => {
+          const y = c.y + (i ? 10 : -10), t0 = i * 0.1;
+          fxAdd(t0 + 0.16, (k, t) => {
+            if (t < t0) return;
+            const kk = Math.min(1, (t - t0) / 0.16), x = lerp(h.x + 20, c.x, kk);
+            slashLine(x - 40, y, x - 6, y, '#7b4bff', 4, 0.5);
+            emoji('🗡️', x, y, 32, Math.PI / 4);
+          });
+          hitAt(t0 + 0.16, d, false, '✖', c.x, y);
+        });
+      },
+      /** 그림자 습격: the hero vanishes and strikes from behind the mob. */
+      blink(s, r, c) {
+        heroHideT = 0.55;
+        const bx = mob.x + mob.size * 0.7, by = H - 34 - D.heroSize;
+        fxAdd(0.55, (k) => {
+          const a = k < 0.25 ? k / 0.25 : k > 0.7 ? (1 - k) / 0.3 : 1;
+          ctx.fillStyle = 'rgba(30,10,60,' + 0.5 * a + ')'; ctx.beginPath(); ctx.ellipse(bx + D.heroSize / 2, H - 32, 40, 8, 0, 0, Math.PI * 2); ctx.fill();
+          ghost(bx, by, 0.85 * a, 250);
+          if (k > 0.3 && k < 0.6) {
+            const q = (k - 0.3) / 0.3;
+            slashLine(c.x + 40, c.y - 40, lerp(c.x + 40, c.x - 40, q), lerp(c.y - 40, c.y + 40, q), '#7b4bff', 8, 1);
+            slashLine(c.x - 40, c.y - 40, lerp(c.x - 40, c.x + 40, q), lerp(c.y - 40, c.y + 40, q), '#c6b3ff', 8, 1);
+          }
+        });
+        hitAt(0.32, r.hits[0], true, '🌙', c.x, c.y);
+      },
+      /** 심야의 암살: the screen goes dark and a crescent cuts through. */
+      eclipse(s, r, c) {
+        fxAdd(0.9, (k) => {
+          const dark = k < 0.3 ? k / 0.3 : k > 0.75 ? (1 - k) / 0.25 : 1;
+          ctx.fillStyle = 'rgba(8,4,30,' + 0.65 * dark + ')'; ctx.fillRect(-10, -10, W + 20, H + 20);
+          emoji('🌑', W * 0.75, 50, 46, 0, dark);
+          if (k > 0.35 && k < 0.75) {
+            const q = (k - 0.35) / 0.4;
+            ctx.globalAlpha = 1 - q * 0.6; ctx.strokeStyle = '#e8e0ff'; ctx.lineWidth = 12;
+            ctx.beginPath(); ctx.arc(c.x - 30, c.y, 70, -1.2 + q * 0.4, 1.2 + q * 0.4); ctx.stroke();
+            ctx.strokeStyle = '#7b4bff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(c.x - 22, c.y, 60, -1.1 + q * 0.4, 1.1 + q * 0.4); ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        });
+        hitAt(0.5, r.hits[0], true, '🌙', c.x, c.y);
+      },
+
+      // ===== 벼락치기 =====
+      /** 연필검 내려찍기: a giant pencil slams down point-first. */
+      slam(s, r, c) {
+        fxAdd(0.45, (k) => {
+          const q = Math.min(1, k / 0.75), y = lerp(-60, c.y - 10, q * q);
+          emoji('✏️', c.x, y, 90, Math.PI * 0.75);
+          if (k > 0.75) ring(c.x, H - 34, (k - 0.75) * 400, '#ffe14a', 6, (1 - k) * 4);
+        });
+        hitAt(0.34, r.hits[0], true, '💥', c.x, H - 50);
+      },
+      /** 벼락치기 연타: lightning bolts strike the mob from the sky. */
+      lightning(s, r, c) {
+        r.hits.forEach((d, i) => {
+          const at = 0.05 + i * 0.09, x = c.x + (Math.random() - 0.5) * 60;
+          const pts = []; let px = x + (Math.random() - 0.5) * 40;
+          for (let yy = -10; yy < c.y; yy += 22) { pts.push([px, yy]); px += (Math.random() - 0.5) * 30; }
+          pts.push([x, c.y]);
+          fxAdd(at + 0.14, (k, t) => {
+            if (t < at) return;
+            const a = 1 - (t - at) / 0.14;
+            ctx.globalAlpha = a; ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 7; ctx.beginPath(); pts.forEach(([u, v], j) => j ? ctx.lineTo(u, v) : ctx.moveTo(u, v)); ctx.stroke();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1;
+          });
+          hitAt(at, d, false, '⚡', x, c.y);
+        });
+        flashT = 0.06;
+      },
+      /** 데드라인 폭발: a pillar of fire erupts under the mob. */
+      eruption(s, r, c) {
+        fxAdd(0.75, (k) => {
+          const hgt = (k < 0.3 ? k / 0.3 : 1) * (H - 20), a = k > 0.6 ? (1 - k) / 0.4 : 1;
+          const g = ctx.createLinearGradient(0, H - 34, 0, H - 34 - hgt);
+          g.addColorStop(0, 'rgba(255,225,74,' + a + ')'); g.addColorStop(0.5, 'rgba(255,90,26,' + a + ')'); g.addColorStop(1, 'rgba(255,58,26,0)');
+          ctx.fillStyle = g; const w = 70 + Math.sin(k * 40) * 8;
+          ctx.fillRect(c.x - w / 2, H - 34 - hgt, w, hgt);
+          for (let i = 0; i < 4; i++) emoji('🔥', c.x + (i - 1.5) * 22, H - 50 - ((k * 300 + i * 40) % hgt), 28, 0, a);
+        });
+        shakeT = 0.4;
+        hitAt(0.28, r.hits[0], true, '🔥', c.x, c.y);
+      },
+
+      // ===== 계획형 =====
+      /** 플래너 방패 강타: the hero charges shield-first into the mob. */
+      shieldbash(s, r, c) {
+        heroHideT = 0.35;
+        const h = heroCenter();
+        fxAdd(0.35, (k) => {
+          const q = k < 0.5 ? k / 0.5 : 1 - (k - 0.5) / 0.5, x = lerp(D.heroX, mob ? mob.x - D.heroSize * 0.6 : c.x, q);
+          for (let j = 1; j <= 3; j++) ghost(x - j * 18 * q, H - 34 - D.heroSize, 0.15, 0);
+          ghost(x, H - 34 - D.heroSize, 1, 0);
+          emoji('🛡️', x + D.heroSize * 0.85, h.y, 44);
+        });
+        hitAt(0.17, r.hits[0], true, '🛡️', c.x - 20, c.y);
+      },
+      /** 체크리스트 연격: check marks stamp onto the mob one by one. */
+      stamps(s, r, c) {
+        r.hits.forEach((d, i) => {
+          const x = c.x + ((i % 2) - 0.5) * 50, y = c.y + (Math.floor(i / 2) - 0.5) * 44, at = 0.1 + i * 0.13;
+          fxAdd(at + 0.45, (k, t) => {
+            if (t < at - 0.1) return;
+            const q = Math.min(1, (t - (at - 0.1)) / 0.1), z = lerp(70, 34, q), a = t > at + 0.25 ? 1 - (t - at - 0.25) / 0.2 : 1;
+            ctx.globalAlpha = Math.max(0, a); ctx.strokeStyle = '#3ee07a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+            ctx.strokeRect(x - z / 2, y - z / 2, z, z);
+            ctx.beginPath(); ctx.moveTo(x - z * 0.3, y); ctx.lineTo(x - z * 0.05, y + z * 0.25); ctx.lineTo(x + z * 0.35, y - z * 0.3); ctx.stroke();
+            ctx.globalAlpha = 1;
+          });
+          hitAt(at, d, false, '✅', x, y);
+        });
+      },
+      /** 완벽한 타임라인: a golden clock spins over the hero (attack speed buff). */
+      aura(s, r, c) {
+        const dur = (r.haste && r.haste.dur) || 3;
+        fxAdd(dur, (k, t) => {
+          const h = heroCenter(), a = t < 0.3 ? t / 0.3 : k > 0.9 ? (1 - k) * 10 : 0.9, y = h.y - D.heroSize * 0.85;
+          ring(h.x, y, 22, '#ffd84a', 4, a);
+          ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(h.x, y); ctx.lineTo(h.x + Math.cos(t * 12) * 16, y + Math.sin(t * 12) * 16); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(h.x, y); ctx.lineTo(h.x + Math.cos(t * 1.5) * 10, y + Math.sin(t * 1.5) * 10); ctx.stroke();
+          ctx.globalAlpha = 1;
+          ring(h.x, h.y, D.heroSize * 0.6 + Math.sin(t * 8) * 4, '#ffd84a', 3, a * 0.6);
+        });
+        const h = heroCenter(); burst('⏰', h.x, h.y - 40, 46, true);
+      },
+
+      // ===== 출튀 =====
+      /** 출튀 대시: the hero dashes through the mob leaving afterimages. */
+      dashthrough(s, r, c) {
+        heroHideT = 0.5;
+        const x0 = D.heroX, x1 = (mob ? mob.x + mob.size : c.x + 60) + 10, y = H - 34 - D.heroSize;
+        fxAdd(0.5, (k) => {
+          const q = k < 0.55 ? k / 0.55 : 1 - (k - 0.55) / 0.45, x = lerp(x0, x1, q);
+          for (let j = 1; j <= 4; j++) ghost(x - j * 26 * Math.sign(k < 0.55 ? 1 : -1), y, 0.4 - j * 0.08, 0);
+          ghost(x, y, 1, 0);
+          if (k < 0.55) slashLine(x0 + D.heroSize, c.y, x + D.heroSize * 0.6, c.y, '#5af0ff', 6, 0.6);
+        });
+        r.hits.forEach((d, i) => hitAt(0.12 + i * 0.07, d, false, '💨', c.x + (i - 1) * 16, c.y + (i - 1) * 10));
+      },
+      /** 분신 난무: clones pop up around the mob, strike once each and vanish. */
+      clones(s, r, c) {
+        const n = r.hits.length;
+        r.hits.forEach((d, i) => {
+          const ang = Math.PI + (i / Math.max(1, n - 1) - 0.5) * Math.PI * 1.4;
+          const sx = c.x + Math.cos(ang) * 95 - D.heroSize / 2, sy = c.y + Math.sin(ang) * 55 - D.heroSize / 2 - 10;
+          const t0 = i * 0.08;
+          fxAdd(t0 + 0.42, (k, t) => {
+            if (t < t0) return;
+            const u = t - t0;
+            const a = u < 0.08 ? u / 0.08 : u > 0.3 ? Math.max(0, 1 - (u - 0.3) / 0.12) : 1;
+            const lungeK = u > 0.1 && u < 0.2 ? (u - 0.1) / 0.1 : u >= 0.2 ? 1 - Math.min(1, (u - 0.2) / 0.1) : 0;
+            const gx = lerp(sx, c.x - D.heroSize / 2, lungeK * 0.5), gy = lerp(sy, c.y - D.heroSize / 2, lungeK * 0.5);
+            if (u < 0.08) ring(sx + D.heroSize / 2, sy + D.heroSize / 2, 30 * (1 - u / 0.08), '#5af0ff', 3, 1);
+            ring(gx + D.heroSize / 2, gy + D.heroSize / 2, D.heroSize * 0.45, '#5af0ff', 3, 0.6 * a);
+            ghost(gx, gy, 0.8 * a, 0);
+            if (u > 0.16 && u < 0.26) slashLine(gx + D.heroSize / 2, gy + D.heroSize / 2, c.x, c.y, '#5af0ff', 5, 1);
+            if (u > 0.3 && u < 0.42) spray(gx + D.heroSize / 2, gy + D.heroSize / 2, 1, 60, 0.8);
+          });
+          hitAt(t0 + 0.18, d, false, '👤', c.x + (Math.random() - 0.5) * 30, c.y + (Math.random() - 0.5) * 30);
+        });
+      },
+      /** 혜성 강하: a blazing comet streaks down from the sky and craters the mob. */
+      comet(s, r, c) {
+        const sx = W + 60, sy = -80, land = 0.5;
+        fxAdd(0.95, (k, t) => {
+          if (t < land) {
+            const q = t / land, x = lerp(sx, c.x, q * q), y = lerp(sy, c.y, q * q);
+            const tx = x + (sx - c.x) * 0.35, ty = y + (sy - c.y) * 0.35;
+            const g = ctx.createLinearGradient(x, y, tx, ty);
+            g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.3, 'rgba(90,240,255,0.8)'); g.addColorStop(1, 'rgba(58,123,255,0)');
+            ctx.strokeStyle = g; ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
+            ring(x, y, 22, '#5af0ff', 6, 0.9);
+            spray(x, y, 2, 40, 1.2);
+          } else {
+            const q = (t - land) / (0.95 - land);
+            ring(c.x, H - 34, q * 220, '#5af0ff', 10, 1 - q);
+            ring(c.x, H - 34, q * 140, '#ffffff', 6, 1 - q);
+            ctx.fillStyle = 'rgba(40,30,20,' + 0.5 * (1 - q) + ')'; ctx.beginPath(); ctx.ellipse(c.x, H - 30, 60, 10, 0, 0, Math.PI * 2); ctx.fill();
+          }
+        });
+        pendingHits.push({ at: land, dmg: r.hits[0], big: true, fx: '☄️', x: c.x, y: c.y, after: () => { flashT = 0.16; shakeT = 0.45; spray(c.x, H - 40, 40, 320, 1.8); } });
+      }
+    };
+
     function burst(fx, x, y, size, ring) { bursts.push({ fx, x, y, size, ring, life: 0.45, max: 0.45 }); }
 
     function mobCenter() { return { x: mob.x + mob.size / 2, y: H - 34 - mob.size / 2 }; }
@@ -154,7 +438,7 @@
     /** Hero HP hit 0: lose the fight, respawn after a short stun. */
     function heroDown() {
       down = opts.data.combat.respawnSec;
-      clearAttacks();
+      clearAttacks(); heroHideT = 0;
       float('기절…', D.heroX + D.heroSize / 2, H - 60 - D.heroSize, '#ff5a6a', true);
       if (mob && mob.dying <= 0) {
         if (mob.boss) { opts.onBossFail(mob); float('보스전 패배…', W / 2, 80, '#ff5a6a', true); }
@@ -187,7 +471,9 @@
         if (r.haste) { haste = r.haste.dur; hasteMult = r.haste.mult; burst(s.fx, D.heroX + D.heroSize / 2, hy, 46, true); }
         const c = mobCenter();
         const anim = s.anim || (s.type === 'nuke' ? 'projectile' : 'slashes');
-        if (anim === 'projectile') {
+        if (ANIMS[anim]) {
+          ANIMS[anim](s, r, c);
+        } else if (anim === 'projectile') {
           projectiles.push({ fx: s.fx, x0: hx, y0: hy, x1: c.x, y1: c.y, t: 0, dur: 0.28, dmg: r.hits[0], big: true, arc: 30 });
         } else if (anim === 'meteor') {
           projectiles.push({ fx: s.fx, x0: c.x + 70, y0: -30, x1: c.x, y1: c.y, t: -0.1, dur: 0.38, dmg: r.hits[0], big: true, arc: 0, size: 54 });
@@ -358,13 +644,14 @@
         }
       }
       // flying nukes
-      for (let i = projectiles.length - 1; i >= 0; i--) {
-        const p = projectiles[i];
+      // iterate a snapshot: a killing hit calls clearAttacks(), which empties the list
+      for (const p of projectiles.slice()) {
+        if (!projectiles.includes(p)) continue;
         p.t += dt;
         if (p.t < 0) continue;
         if (!p.ghost) { const k = Math.min(1, p.t / p.dur); spray(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k - Math.sin(k * Math.PI) * (p.arc || 0), p.big ? 5 : 2, 50, p.big ? 1.3 : 0.8); }
         if (p.t >= p.dur) {
-          projectiles.splice(i, 1);
+          projectiles.splice(projectiles.indexOf(p), 1);
           if (mob && mob.dying <= 0) {
             const c = mobCenter();
             impact(p.fx, p.ghost ? c.x + (Math.random() - 0.5) * 20 : p.x1, p.ghost ? c.y : p.y1, p.big);
@@ -379,8 +666,10 @@
       for (const h of ready) {
         if (mob && mob.dying <= 0) {
           const c = mobCenter();
-          if (h.big) impact(h.fx, c.x, c.y, true);
-          else impact(h.fx, c.x + (Math.random() - 0.5) * mob.size * 0.6, c.y + (Math.random() - 0.5) * mob.size * 0.5, false);
+          const px = h.x != null ? h.x : h.big ? c.x : c.x + (Math.random() - 0.5) * mob.size * 0.6;
+          const py = h.y != null ? h.y : h.big ? c.y : c.y + (Math.random() - 0.5) * mob.size * 0.5;
+          impact(h.fx, px, py, !!h.big);
+          if (h.after) h.after();
         }
         damage(h.dmg, true);
       }
@@ -417,11 +706,13 @@
       }
       shadow(hx + hs / 2, hs * 0.6);
       const hf = heroFrames.length ? heroFrames[Math.floor(t * 6) % heroFrames.length] : null;
+      curHero = hf;
       if (haste > 0) {
         ctx.fillStyle = 'rgba(255,216,74,' + (0.25 + 0.15 * Math.sin(t * 20)) + ')';
         ctx.beginPath(); ctx.ellipse(hx + hs / 2, H - 34 - hs / 2, hs * 0.55, hs * 0.6, 0, 0, Math.PI * 2); ctx.fill();
       }
-      const blink = down > 0 ? (Math.floor(t * 10) % 2 ? 0.25 : 0.6) : 1;
+      heroHideT = Math.max(0, heroHideT - dt);
+      const blink = heroHideT > 0 ? 0 : down > 0 ? (Math.floor(t * 10) % 2 ? 0.25 : 0.6) : 1;
       drawSprite(hf, hx, H - 34 - hs - bob, hs, blink, 0);
       // hero HP bar
       {
@@ -490,6 +781,12 @@
         ctx.textAlign = 'center';
         ctx.globalAlpha = 0.35; ctx.font = Math.round(z * 0.75) + 'px sans-serif'; ctx.fillText(p.fx, x - (p.x1 - p.x0) * 0.08, y - (p.y1 - p.y0) * 0.08 + z * 0.25);
         ctx.globalAlpha = 1; ctx.font = z + 'px sans-serif'; ctx.fillText(p.fx, x, y + z * 0.35);
+      }
+      for (let i = effects.length - 1; i >= 0; i--) {
+        const e = effects[i];
+        e.t += dt;
+        if (e.t >= e.dur) { effects.splice(i, 1); continue; }
+        ctx.save(); e.draw(e.t / e.dur, e.t); ctx.restore();
       }
       for (const b of beams) {
         const k = b.life / b.max, th = opts.classFx();
@@ -619,8 +916,8 @@
 
     resize();
     window.addEventListener('resize', resize);
-    const mobLoads = D.mobs.map(m => loadSprite(D.mobBase + m.sprite, 192).then(s => { mobSprites[m.sprite] = s; }));
-    const bossLoads = D.bosses.map(m => loadSprite(D.mobBase + m.sprite, 192).then(s => { bossSprites[m.sprite] = s; }));
+    const mobLoads = D.mobs.map(m => loadSprite(D.mobBase + m.sprite, 192, true).then(s => { mobSprites[m.sprite] = s; }));
+    const bossLoads = D.bosses.map(m => loadSprite(D.mobBase + m.sprite, 192, true).then(s => { bossSprites[m.sprite] = s; }));
     Promise.all(mobLoads.concat(bossLoads));
 
     return {

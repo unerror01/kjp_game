@@ -547,7 +547,7 @@
         const bd = T.buildings.find(b => b.id === siegeTarget);
         const owner = L.deptList(D).find(d => d.id === state.territory.owners[bd.id]);
         const boss = D.battle.bosses[(bd.tier - 1) % D.battle.bosses.length];
-        return { def: { name: owner.name + ' 수비대장', sprite: boss.sprite, siege: bd.id }, boss: true, siege: bd.id,
+        return { def: { name: owner.name + ' 수비대장', sprite: boss.sprite, scale: boss.scale, siege: bd.id }, boss: true, siege: bd.id,
           hp: L.siegeHp(bd.tier, D), atk: L.siegeAtk(bd.tier, D), timeLimit: T.siegeTimeLimit,
           bannerTitle: '⚔ ' + bd.name + ' 점령전 ⚔' };
       }

@@ -30,9 +30,9 @@ window.GAME_DATA = {
     bosses: [
       { name: '무임승차 슬라임 킹', sprite: 'slime.png' },
       { name: 'F폭격 교수',        sprite: 'professor.png' },
-      { name: '영어 회화 마왕',    sprite: 'english.png' },
+      { name: '영어 회화 마왕',    sprite: 'english.png', scale: 1.4 },
       { name: '이별의 망령',       sprite: 'breakup.png' },
-      { name: '입영통지 헌병',     sprite: 'army.png' }
+      { name: '입영통지 헌병',     sprite: 'army.png', scale: 1.4 }
     ]
   },
 
@@ -64,8 +64,10 @@ window.GAME_DATA = {
    * Attack skills: 3 per class, unlocked by level, upgraded with gold, auto-cast
    * in battle when off cooldown. type 'nuke' = one hit of mult × ATK,
    * 'multi' = `hits` hits of mult × ATK, 'haste' = attack speed × mult for `dur` s.
-   * anim (visual only): projectile | meteor | beam (nuke), slashes | summon | rain
-   * (multi), aura (haste). fx is the emoji drawn by the effect.
+   * anim (visual only) names a function in scene.js ANIMS (swing, bubbles,
+   * shockwave, daggers, blink, eclipse, slam, lightning, eruption, shieldbash,
+   * stamps, aura, dashthrough, clones, comet) or a generic one (projectile, meteor,
+   * beam, slashes, summon, rain). fx is the emoji used by the effect.
    */
   skills: {
     dmgPerLevel: 0.25,       // +25% skill damage per skill level above 1
@@ -74,23 +76,23 @@ window.GAME_DATA = {
     tierCostMult: [1, 2.5, 6],
     byClass: {
       insider: [
-        { id: 'flag', anim: 'projectile', fx: '🚩', name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
-        { id: 'groupcall', anim: 'summon', fx: '💬', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
-        { id: 'insta', anim: 'beam', fx: '🎉', name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
+        { id: 'flag', anim: 'swing', fx: '🚩', name: '깃발 휘두르기', unlock: 1,  type: 'nuke',  mult: 3,   cd: 4,  desc: '학잠 깃발로 강타' },
+        { id: 'groupcall', anim: 'bubbles', fx: '💬', name: '단톡방 소환', unlock: 5,  type: 'multi', hits: 5, mult: 1.2, cd: 10, desc: '길드원 5명이 몰려와 때린다' },
+        { id: 'insta', anim: 'shockwave', fx: '🎉', name: '인싸력 폭발',   unlock: 10, type: 'nuke',  mult: 12,  cd: 25, desc: '오라가 폭발하며 큰 피해' }
       ],
       hermit: [
-        { id: 'dagger', anim: 'slashes', fx: '🗡️', name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
-        { id: 'shadow', anim: 'summon', fx: '🌙', name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
-        { id: 'midnight', anim: 'beam', fx: '🌑', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
+        { id: 'dagger', anim: 'daggers', fx: '🗡️', name: '노트북 단검',   unlock: 1,  type: 'multi', hits: 2, mult: 1.8, cd: 3, desc: '두 번 빠르게 찌른다' },
+        { id: 'shadow', anim: 'blink', fx: '🌙', name: '그림자 습격',   unlock: 5,  type: 'nuke',  mult: 6,   cd: 9,  desc: '어둠 속에서 급습' },
+        { id: 'midnight', anim: 'eclipse', fx: '🌑', name: '심야의 암살',  unlock: 10, type: 'nuke',  mult: 15,  cd: 25, desc: '초승달 일격' }
       ],
       berserker: [
-        { id: 'pencil', anim: 'meteor', fx: '✏️', name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
-        { id: 'cram', anim: 'slashes', fx: '⚡', name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
-        { id: 'deadline', anim: 'meteor', fx: '🔥', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
+        { id: 'pencil', anim: 'slam', fx: '✏️', name: '연필검 내려찍기', unlock: 1, type: 'nuke', mult: 3.5, cd: 5,  desc: '거대 연필검으로 내려찍기' },
+        { id: 'cram', anim: 'lightning', fx: '⚡', name: '벼락치기 연타',  unlock: 5,  type: 'multi', hits: 8, mult: 0.9, cd: 12, desc: '정신없이 8연타' },
+        { id: 'deadline', anim: 'eruption', fx: '🔥', name: '데드라인 폭발', unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '붉은 불꽃 대폭발' }
       ],
       planner: [
-        { id: 'shield', anim: 'projectile', fx: '🛡️', name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
-        { id: 'checklist', anim: 'slashes', fx: '✅', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
+        { id: 'shield', anim: 'shieldbash', fx: '🛡️', name: '플래너 방패 강타', unlock: 1, type: 'nuke', mult: 2.8, cd: 4, desc: '방패로 후려친다' },
+        { id: 'checklist', anim: 'stamps', fx: '✅', name: '체크리스트 연격', unlock: 5, type: 'multi', hits: 4, mult: 1.6, cd: 10, desc: '할 일을 하나씩 지운다' },
         { id: 'timeline', anim: 'aura', fx: '⏰', name: '완벽한 타임라인', unlock: 10, type: 'haste', mult: 3, dur: 10, cd: 30, desc: '10초간 공격 속도 3배' }
       ],
       foodie: [
@@ -99,9 +101,9 @@ window.GAME_DATA = {
         { id: 'feast', anim: 'meteor', fx: '🍚', name: '학식 대폭발',   unlock: 10, type: 'nuke',  mult: 13,  cd: 25, desc: '오늘의 특식이 터진다' }
       ],
       rogue: [
-        { id: 'dash', anim: 'slashes', fx: '💨', name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
-        { id: 'clones', anim: 'summon', fx: '👤', name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
-        { id: 'comet', anim: 'meteor', fx: '☄️', name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
+        { id: 'dash', anim: 'dashthrough', fx: '💨', name: '출튀 대시',     unlock: 1,  type: 'multi', hits: 3, mult: 1.2, cd: 3.5, desc: '스치듯 3연타' },
+        { id: 'clones', anim: 'clones', fx: '👤', name: '분신 난무',     unlock: 5,  type: 'multi', hits: 6, mult: 1.3, cd: 10, desc: '분신들이 동시에 공격' },
+        { id: 'comet', anim: 'comet', fx: '☄️', name: '혜성 강하',     unlock: 10, type: 'nuke',  mult: 14,  cd: 25, desc: '혜성처럼 떨어진다' }
       ]
     }
   },
